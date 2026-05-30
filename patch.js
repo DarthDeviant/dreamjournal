@@ -5,8 +5,8 @@
    Uses your local Claude proxy at localhost:8082 — no API key needed.
 
    HOW TO USE:
-   1. Start your proxy:
-        ANTHROPIC_AUTH_TOKEN="freecc" ANTHROPIC_BASE_URL="http://localhost:8082" claude
+   1. Start your proxy (self-contained — no other flags needed):
+        uv run uvicorn server:app --host 0.0.0.0 --port 8082
    2. Add before </body>:  <script src="patch.js"></script>
 ═══════════════════════════════════════════════════════════════════ */
 
@@ -87,6 +87,12 @@
         await pFetchEntries();
         await pDecryptAll();
         P.analysisCache = null;
+        // If decryption yielded nothing, the passphrase is wrong.
+        // Force-lock the journal even if it was previously decrypted.
+        if (P.decrypted.size === 0) {
+          P.pw = null; P.summaryCache.clear();
+          if (typeof window.lock === 'function') window.lock();
+        }
       }
     }
     if (e.key === 'Escape') {
