@@ -88,15 +88,19 @@
         await pDecryptAll();
         P.analysisCache = null;
         // If decryption yielded nothing, the passphrase is wrong.
-        // Force-lock the journal even if it was previously decrypted.
+        // Play encryption animation then force-lock even if journal was open.
         if (P.decrypted.size === 0) {
           P.pw = null; P.summaryCache.clear();
-          if (typeof window.lock === 'function') window.lock();
+          showEncryptAnim(() => { if (typeof window.lock === 'function') window.lock(); });
         }
       }
     }
     if (e.key === 'Escape') {
+      const wasUnlocked = typeof S !== 'undefined' && S.unlocked;
       P.pw = null; P.decrypted.clear(); P.summaryCache.clear(); P.analysisCache = null;
+      if (wasUnlocked) {
+        showEncryptAnim(() => { if (typeof window.lock === 'function') window.lock(); });
+      }
     }
   }, true);
 
@@ -273,11 +277,116 @@
   #patch-cal-month-lbl { min-width: 120px; font-size: 10px; }
   .patch-section-body { font-size: 11px; }
 }
+
+/* ── Encryption animation overlay ── */
+#patch-enc-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--paper);
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  overflow: hidden;
+  pointer-events: all;
+}
+#patch-enc-overlay.active { display: flex; }
+#patch-enc-canvas {
+  position: absolute; inset: 0;
+  font-size: 11px; line-height: 1.45; letter-spacing: 1px;
+  color: var(--ink-ghost); white-space: pre; overflow: hidden;
+  padding: 8px;
+}
+#patch-enc-label {
+  position: relative; z-index: 2;
+  font-size: 11px; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--ink-soft); opacity: 0;
+  transition: opacity 0.25s;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+#patch-enc-label.show { opacity: 1; }
+#patch-enc-bar {
+  width: 160px; height: 2px; background: var(--rule-dark); overflow: hidden;
+}
+#patch-enc-bar-fill {
+  height: 100%; width: 0%; background: var(--ink-soft);
+  transition: width 0.05s linear;
+}
 `;
 
   /* ─── INJECT CSS ─────────────────────────────────────────────── */
   function injectCSS() {
     document.head.appendChild(Object.assign(document.createElement('style'), { textContent: CSS }));
+  }
+
+  /* ─── ENCRYPTION ANIMATION ───────────────────────────────────── */
+  const ENC_CHARS = '░▒▓▄▀■□-~*+=#@&%?!./|:;ABCDEFGHJKMNPQRSTUVXYZabcdefghjkmnpqrstuvxyz0123456789';
+  function _rndCh() { return ENC_CHARS[Math.floor(Math.random() * ENC_CHARS.length)]; }
+
+  function injectEncOverlay() {
+    const el = document.createElement('div');
+    el.id = 'patch-enc-overlay';
+    el.innerHTML = `
+      <div id="patch-enc-canvas"></div>
+      <div id="patch-enc-label">
+        <span>encrypting...</span>
+        <div id="patch-enc-bar"><div id="patch-enc-bar-fill"></div></div>
+      </div>`;
+    document.body.appendChild(el);
+  }
+
+  function showEncryptAnim(onDone) {
+    const overlay = document.getElementById('patch-enc-overlay');
+    const canvas  = document.getElementById('patch-enc-canvas');
+    const label   = document.getElementById('patch-enc-label');
+    const fill    = document.getElementById('patch-enc-bar-fill');
+    if (!overlay) { onDone?.(); return; }
+
+    // Build a grid of random chars that fills the viewport
+    const cols = Math.ceil(window.innerWidth  / 8) + 2;
+    const rows = Math.ceil(window.innerHeight / 16) + 2;
+    let grid = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, _rndCh)
+    );
+    const render = () => { canvas.textContent = grid.map(r => r.join('')).join('\n'); };
+
+    overlay.classList.add('active');
+    label.classList.remove('show');
+    fill.style.width = '0%';
+    render();
+
+    let frame = 0;
+    const TOTAL_FRAMES = 36;   // ~900 ms of scramble at ~25 fps
+    let pct = 0;
+
+    const ticker = setInterval(() => {
+      frame++;
+      pct = Math.min(100, Math.round((frame / TOTAL_FRAMES) * 100));
+      fill.style.width = pct + '%';
+
+      // Each frame: replace a random subset of cells — density increases over time
+      const density = 0.18 + (frame / TOTAL_FRAMES) * 0.55;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (Math.random() < density) grid[r][c] = _rndCh();
+        }
+      }
+      render();
+
+      if (frame === Math.floor(TOTAL_FRAMES * 0.45)) label.classList.add('show');
+
+      if (frame >= TOTAL_FRAMES) {
+        clearInterval(ticker);
+        // Fade out
+        overlay.style.transition = 'opacity 0.35s';
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+          overlay.classList.remove('active');
+          overlay.style.transition = '';
+          overlay.style.opacity = '';
+          label.classList.remove('show');
+          onDone?.();
+        }, 370);
+      }
+    }, 25);
   }
 
   /* ─── INJECT UI ──────────────────────────────────────────────── */
@@ -567,7 +676,7 @@ ${corpus}`, 1200);
 
   /* ─── INIT ───────────────────────────────────────────────────── */
   function boot() {
-    injectCSS(); injectUI();
+    injectCSS(); injectUI(); injectEncOverlay();
     const display=document.getElementById('entry-display');
     if (display) entryObs.observe(display,{childList:true,subtree:true});
     pFetchEntries();
