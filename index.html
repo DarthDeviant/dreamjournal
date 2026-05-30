@@ -515,31 +515,18 @@ body::after {
 .shake { animation: shk .28s ease; }
 
 /* ════════════════════════════════
-   MODAL
+   MODAL — fullscreen split (desktop)
 ════════════════════════════════ */
 #modal {
   position: fixed; inset: 0;
-  background: rgba(26,24,20,0.7);
+  background: var(--paper);
   z-index: 200;
   display: none;
-  align-items: flex-start;
-  justify-content: center;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 24px 0 100px;
+  flex-direction: column;
 }
 #modal.show { display: flex; }
 
-.modal-box {
-  background: var(--paper);
-  border: 2px solid var(--ink);
-  width: 540px;
-  max-width: 97vw;
-  flex-shrink: 0;
-  margin: auto;
-  /* Soft shadow — no glow, just depth */
-  box-shadow: 6px 6px 0 var(--ink-mid);
-}
+/* Titlebar strip across the top */
 .modal-titlebar {
   background: var(--ink);
   color: var(--paper);
@@ -550,6 +537,7 @@ body::after {
   align-items: center;
   justify-content: space-between;
   font-weight: 500;
+  flex-shrink: 0;
 }
 #modal-close {
   background: none; border: 1px solid var(--ink-mid); cursor: pointer;
@@ -561,18 +549,90 @@ body::after {
 }
 #modal-close:hover, #modal-close:active { background: var(--mark-err); color: var(--paper); border-color: var(--mark-err); }
 
-.modal-body { padding: 22px 20px; }
+/* The split body */
+.modal-box {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Left panel — metadata */
+.modal-left {
+  width: 300px;
+  min-width: 260px;
+  max-width: 340px;
+  flex-shrink: 0;
+  border-right: 2px solid var(--rule-dark);
+  background: var(--paper-dim);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.modal-left-header {
+  padding: 10px 16px 8px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--rule-dark);
+  flex-shrink: 0;
+  background: var(--paper-mid);
+}
+.modal-left-header::before { content: '> '; color: var(--ink-ghost); }
+.modal-left-body {
+  padding: 20px 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Right panel — code editor */
+.modal-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  background: var(--paper);
+}
+.modal-right-header {
+  padding: 10px 16px 8px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--rule-dark);
+  flex-shrink: 0;
+  background: var(--paper-dim);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-right-header span::before { content: '> '; color: var(--ink-ghost); }
+.modal-right-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
 
 .fg { margin-bottom: 16px; }
+/* Date + time side by side */
+.fg-row { display: flex; gap: 10px; margin-bottom: 16px; }
+.fg-row .fg { margin-bottom: 0; flex: 1; min-width: 0; }
 .fl-lbl {
   display: block; font-size: 9px; letter-spacing: 2px;
   color: var(--ink-soft); margin-bottom: 6px;
   text-transform: uppercase;
 }
 .fl-lbl::before { content: '// '; color: var(--ink-ghost); }
-.fi, .ft {
+.fi {
   width: 100%;
-  background: var(--paper-dim);
+  background: var(--paper);
   border: 1px solid var(--rule-dark);
   border-bottom: 2px solid var(--ink-soft);
   color: var(--ink);
@@ -584,8 +644,34 @@ body::after {
   -webkit-appearance: none;
   transition: border-bottom-color 0.15s;
 }
-.fi:focus, .ft:focus { border-bottom-color: var(--ink); background: var(--paper); }
-.ft { min-height: 120px; resize: vertical; line-height: 1.8; font-style: italic; }
+.fi:focus { border-bottom-color: var(--ink); background: var(--paper); }
+
+/* Code editor textarea — fills the right pane */
+#eco {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  background: var(--paper);
+  border: none;
+  border-left: 3px solid var(--rule-dark);
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.75;
+  padding: 20px 24px;
+  outline: none;
+  letter-spacing: 0.2px;
+  tab-size: 2;
+  font-style: italic;
+  transition: border-left-color 0.15s;
+}
+#eco:focus {
+  border-left-color: var(--ink-soft);
+  font-style: normal;
+  background: var(--paper);
+}
+#eco::placeholder { color: var(--ink-ghost); font-style: italic; font-size: 12px; }
 html.light-mode body::after {
   background: repeating-linear-gradient(
     180deg,
@@ -595,8 +681,10 @@ html.light-mode body::after {
     rgba(0,0,0,0.028) 23px
   );
 }
-html.light-mode .fi[type="date"] { color-scheme: light; }
-.fi[type="date"] { color-scheme: dark; }
+html.light-mode .fi[type="date"],
+html.light-mode .fi[type="time"] { color-scheme: light; }
+.fi[type="date"],
+.fi[type="time"] { color-scheme: dark; }
 
 .fsel { display: flex; flex-wrap: wrap; gap: 5px; }
 .fr { display: none; }
@@ -626,13 +714,16 @@ html.light-mode .fi[type="date"] { color-scheme: light; }
   font-family: 'IBM Plex Mono', monospace;
   font-size: 12px; letter-spacing: 1px;
   cursor: pointer; transition: opacity 0.15s;
-  text-align: left; margin-top: 6px;
+  text-align: left; margin-top: auto; padding-top: 12px;
   -webkit-tap-highlight-color: transparent;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 .bsub::before { content: '+ '; }
 .bsub:hover, .bsub:active { opacity: 0.75; }
 .bsub:disabled { opacity: 0.4; cursor: default; }
+/* mobile-only submit button hidden by default */
+.bsub-mobile { display: none; }
 
 /* ════════════════════════════════
    NOTIFICATIONS
@@ -732,11 +823,21 @@ html.light-mode .fi[type="date"] { color-scheme: light; }
   #empty-state .es-logo { font-size: 56px; }
   #empty-state p { font-size: 9px; }
 
-  .modal-box { max-width: 100vw; margin: 0; }
-  #modal { padding: 0 0 80px; }
-  .modal-body { padding: 14px 12px; }
-  .fi, .ft { font-size: 16px; }
-  .ft { font-size: 15px; }
+  .modal-box { flex-direction: column; }
+  .modal-left {
+    width: 100%; max-width: 100%; min-width: unset;
+    border-right: none;
+    border-bottom: 2px solid var(--rule-dark);
+    overflow-y: visible;
+  }
+  /* Hide the desktop submit inside left panel on mobile */
+  .bsub:not(.bsub-mobile) { display: none; }
+  /* Show the mobile submit below the editor */
+  .bsub-mobile { display: block; font-size: 14px; padding: 14px 16px; flex-shrink: 0; }
+  .modal-right { flex: 1; min-height: 0; }
+  #eco { min-height: 280px; font-size: 16px; padding: 14px 14px; }
+  .fi { font-size: 16px; }
+  .modal-left-body { padding: 14px 14px; }
 }
 </style>
 </head>
@@ -821,38 +922,60 @@ html.light-mode .fi[type="date"] { color-scheme: light; }
   <button id="theme-toggle" title="Toggle light/dark mode">☀</button>
 </div>
 
-<!-- MODAL -->
+<!-- MODAL — fullscreen split -->
 <div id="modal">
+  <div class="modal-titlebar">
+    <span>DREAM_JOURNAL.EXE &mdash; New Entry</span>
+    <button id="modal-close">[ close ]</button>
+  </div>
   <div class="modal-box">
-    <div class="modal-titlebar">
-      <span>New Dream Entry</span>
-      <button id="modal-close">[ close ]</button>
-    </div>
-    <div class="modal-body">
-      <div class="fg">
-        <label class="fl-lbl" for="ei">Dream Title</label>
-        <input type="text" class="fi" id="ei" placeholder="name this dream..." autocomplete="off">
-      </div>
-      <div class="fg">
-        <label class="fl-lbl" for="edt">Date</label>
-        <input type="date" class="fi" id="edt">
-      </div>
-      <div class="fg">
-        <label class="fl-lbl">Classification</label>
-        <div class="fsel">
-          <input type="radio" class="fr" name="fl" id="fr-nr" value="no_record"><label for="fr-nr">No Record</label>
-          <input type="radio" class="fr" name="fl" id="fr-vg" value="vague"><label for="fr-vg">Vague</label>
-          <input type="radio" class="fr" name="fl" id="fr-vv" value="vivid" checked><label for="fr-vv">Vivid</label>
-          <input type="radio" class="fr" name="fl" id="fr-lc" value="lucid"><label for="fr-lc">Lucid</label>
-          <input type="radio" class="fr" name="fl" id="fr-as" value="astral"><label for="fr-as">Astral</label>
+
+    <!-- LEFT: metadata panel -->
+    <div class="modal-left">
+      <div class="modal-left-header">entry metadata</div>
+      <div class="modal-left-body">
+        <div class="fg">
+          <label class="fl-lbl" for="ei">Dream Title</label>
+          <input type="text" class="fi" id="ei" placeholder="name this dream..." autocomplete="off">
         </div>
+        <div class="fg-row">
+          <div class="fg">
+            <label class="fl-lbl" for="edt">Date</label>
+            <input type="date" class="fi" id="edt">
+          </div>
+          <div class="fg" style="max-width:120px">
+            <label class="fl-lbl" for="etm">Time</label>
+            <input type="time" class="fi" id="etm">
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl-lbl">Classification</label>
+          <div class="fsel">
+            <input type="radio" class="fr" name="fl" id="fr-nr" value="no_record"><label for="fr-nr">No Record</label>
+            <input type="radio" class="fr" name="fl" id="fr-vg" value="vague"><label for="fr-vg">Vague</label>
+            <input type="radio" class="fr" name="fl" id="fr-vv" value="vivid" checked><label for="fr-vv">Vivid</label>
+            <input type="radio" class="fr" name="fl" id="fr-lc" value="lucid"><label for="fr-lc">Lucid</label>
+            <input type="radio" class="fr" name="fl" id="fr-as" value="astral"><label for="fr-as">Astral</label>
+          </div>
+        </div>
+        <button class="bsub" id="sube">Encode &amp; Save Entry</button>
       </div>
-      <div class="fg">
-        <label class="fl-lbl" for="eco">Dream Log</label>
-        <textarea class="ft" id="eco" placeholder="describe your dream in detail..."></textarea>
-      </div>
-      <button class="bsub" id="sube">Encode &amp; Save Entry</button>
     </div>
+
+    <!-- RIGHT: code editor -->
+    <div class="modal-right">
+      <div class="modal-right-header">
+        <span>dream log</span>
+        <span style="font-size:9px;color:var(--ink-ghost);letter-spacing:1px">plain text &nbsp;·&nbsp; utf-8</span>
+      </div>
+      <div class="modal-right-body">
+        <textarea id="eco" placeholder="begin writing your dream...&#10;&#10;describe everything you remember — people, places, feelings, symbols.&#10;no punctuation required. no structure required. just the dream."></textarea>
+      </div>
+    </div>
+
+    <!-- Mobile-only submit (below editor) -->
+    <button class="bsub bsub-mobile" id="sube-mobile">Encode &amp; Save Entry</button>
+
   </div>
 </div>
 
@@ -957,6 +1080,15 @@ function fmtDate(d) {
   try { return new Date(d+'T00:00:00').toLocaleDateString('en-US',{year:'numeric',month:'short',day:'2-digit'}); }
   catch { return d; }
 }
+function fmtDateTime(d, t) {
+  try {
+    const dateStr=new Date(d+'T00:00:00').toLocaleDateString('en-US',{year:'numeric',month:'short',day:'2-digit'});
+    if(!t) return dateStr;
+    const [h,m]=t.split(':');
+    const hr=parseInt(h); const ampm=hr>=12?'PM':'AM'; const h12=hr%12||12;
+    return `${dateStr} — ${h12}:${m} ${ampm}`;
+  } catch { return d; }
+}
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function genId() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function badge(f) { return `<span class="fl fl-${f}">${FL[f]||f}</span>`; }
@@ -1012,14 +1144,14 @@ function selectEntry(id) {
   S.selId=id; renderList();
   const e=S.entries.find(x=>x.id===id); if(!e) return;
   showDisplay();
-  $id('content-path').textContent=fmtDate(e.date)+' / '+(S.cache.get(id)?.title||'[encrypted]');
+  $id('content-path').textContent=fmtDateTime(e.date,e.time||'')+' / '+(S.cache.get(id)?.title||'[encrypted]');
   (S.unlocked&&S.cache.has(id))?renderDecrypted(e,false):renderEncrypted(e);
 }
 
 function renderEncrypted(e) {
   const cLen=e.enc_content?Math.max(80,unb64(e.enc_content.data).length-16):120;
   $id('entry-display').innerHTML=`
-    <div class="ed-meta"><span>${fmtDate(e.date)}</span>${badge(e.flair)}</div>
+    <div class="ed-meta"><span>${fmtDateTime(e.date,e.time||'')}</span>${badge(e.flair)}</div>
     <div class="ed-title enc" id="edt-${e.id}">${fakeTitle(e.id)}</div>
     <hr class="ed-hr">
     <div class="ed-body enc" id="edc-${e.id}">${esc(fakeContent(e.id,cLen))}</div>
@@ -1029,7 +1161,7 @@ function renderEncrypted(e) {
 function renderDecrypted(e, animate) {
   const c=S.cache.get(e.id); if(!c) return;
   $id('entry-display').innerHTML=`
-    <div class="ed-meta"><span>${fmtDate(e.date)}</span>${badge(e.flair)}</div>
+    <div class="ed-meta"><span>${fmtDateTime(e.date,e.time||'')}</span>${badge(e.flair)}</div>
     <div class="ed-title" id="edt-${e.id}"></div>
     <hr class="ed-hr">
     <div class="ed-body" id="edc-${e.id}"></div>
@@ -1103,16 +1235,19 @@ async function addEntry() {
   if(!S.pw){notify('Unlock first.','err');$id('pw-input').focus();return;}
   const title=$id('ei').value.trim();
   const date=$id('edt').value;
+  const time=$id('etm').value||'';
   const flair=document.querySelector('.fr:checked')?.value||'vivid';
   const content=$id('eco').value.trim();
   if(!title){notify('Title required.','err');return;}
   if(!date){notify('Date required.','err');return;}
   if(!content){notify('Content required.','err');return;}
-  const btn=$id('sube'); btn.textContent='Encrypting...'; btn.disabled=true;
+  const btn=$id('sube'), btnM=$id('sube-mobile');
+  btn.textContent='Encrypting...'; btn.disabled=true;
+  btnM.textContent='Encrypting...'; btnM.disabled=true;
   try {
     const enc_title=await encStr(title,S.pw);
     const enc_content=await encStr(content,S.pw);
-    const entry={id:genId(),date,flair,enc_title,enc_content,created_at:new Date().toISOString()};
+    const entry={id:genId(),date,time,flair,enc_title,enc_content,created_at:new Date().toISOString()};
     await saveEntry(entry);
     S.entries.unshift(entry);
     S.entries.sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -1121,7 +1256,7 @@ async function addEntry() {
     selectEntry(entry.id);
     notify('Dream encoded and saved.','ok');
   } catch(e){notify('Encryption failed.','err');console.error(e);}
-  finally{btn.textContent='Encode & Save Entry';btn.disabled=false;}
+  finally{btn.textContent='Encode & Save Entry';btn.disabled=false;btnM.textContent='Encode & Save Entry';btnM.disabled=false;}
 }
 
 // ── EXPORT ──
@@ -1138,7 +1273,9 @@ function exportJSON() {
 // ── MODAL ──
 function openModal() {
   if(!S.pw){notify('Unlock first.','err');$id('pw-input').focus();return;}
-  $id('edt').value=new Date().toISOString().split('T')[0];
+  const now=new Date();
+  $id('edt').value=now.toISOString().split('T')[0];
+  $id('etm').value=now.toTimeString().slice(0,5);
   $id('ei').value=''; $id('eco').value='';
   document.querySelector('.fr[value="vivid"]').checked=true;
   $id('modal').classList.add('show');
@@ -1167,6 +1304,7 @@ async function init() {
   $id('menu-new').addEventListener('click',openModal);
   $id('modal-close').addEventListener('click',closeModal);
   $id('sube').addEventListener('click',addEntry);
+  $id('sube-mobile').addEventListener('click',addEntry);
   $id('export-btn').addEventListener('click',exportJSON);
   $id('menu-export').addEventListener('click',exportJSON);
   $id('modal').addEventListener('click',e=>{if(e.target===$id('modal'))closeModal();});
