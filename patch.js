@@ -1,13 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════
-   DREAM_JOURNAL  —  PATCH v1.0  (local-proxy build)
-   Features: ◫ Calendar · ∿ Dream Analyzer · 2-Line Summarizer
+   DREAM_JOURNAL  —  PATCH v2.0
+   Feature: ◫ Calendar
 
-   Uses your local Claude proxy at localhost:8082 — no API key needed.
-
-   HOW TO USE:
-   1. Start your proxy:
-        ANTHROPIC_AUTH_TOKEN="freecc" ANTHROPIC_BASE_URL="http://localhost:8082" claude
-   2. Add before </body>:  <script src="patch.js"></script>
+   Add before </body>:  <script src="patch.js"></script>
 ═══════════════════════════════════════════════════════════════════ */
 
 (function () {
@@ -15,31 +10,9 @@
 
   /* ─── CONFIG ─────────────────────────────────────────────────── */
   const CFG = {
-    LOCAL_URL:    'http://localhost:8082/v1/messages',
-    LOCAL_TOKEN:  'freecc',
-    OR_URL:       'https://openrouter.ai/api/v1/chat/completions',
     SB_URL: 'https://szyyypsfsxkwgthsqsrb.supabase.co',
     SB_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6eXl5cHNmc3hrd2d0aHNxc3JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNTIyNzMsImV4cCI6MjA5NTcyODI3M30.xWWl5sdaGZjubnz_uZOQM5lNLle-sTe7IjWII8GhN9k'
   };
-
-  const OR_MODELS = [
-    { id: 'minimax/minimax-m2.5:free',         label: 'MiniMax M2.5  (free)' },
-    { id: 'deepseek/deepseek-r1:free',          label: 'DeepSeek R1   (free)' },
-    { id: 'google/gemma-3-27b-it:free',         label: 'Gemma 3 27B   (free)' },
-    { id: 'meta-llama/llama-4-scout:free',      label: 'Llama 4 Scout (free)' },
-    { id: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B    (free)' },
-  ];
-
-  /* ─── SETTINGS (localStorage) ────────────────────────────────── */
-  const STORE_KEY = 'dj_patch_cfg';
-  function loadCfg() {
-    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch { return {}; }
-  }
-  function saveCfg(obj) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(obj)); } catch {}
-  }
-  function getApiKey()  { return loadCfg().apiKey  || ''; }
-  function getModel()   { return loadCfg().model   || OR_MODELS[0].id; }
   const SB_HDR = {
     'Content-Type': 'application/json',
     'apikey':        CFG.SB_KEY,
@@ -48,12 +21,10 @@
 
   /* ─── STATE ──────────────────────────────────────────────────── */
   const P = {
-    pw:            null,
-    entries:       [],
-    decrypted:     new Map(),
-    calDate:       new Date(),
-    summaryCache:  new Map(),
-    analysisCache: null,
+    pw:        null,
+    entries:   [],
+    decrypted: new Map(),
+    calDate:   new Date(),
   };
 
   /* ─── CRYPTO  (mirrors main script) ─────────────────────────── */
@@ -106,18 +77,16 @@
         P.pw = pw;
         await pFetchEntries();
         await pDecryptAll();
-        P.analysisCache = null;
       }
     }
     if (e.key === 'Escape') {
-      P.pw = null; P.decrypted.clear(); P.summaryCache.clear(); P.analysisCache = null;
+      P.pw = null; P.decrypted.clear();
     }
   }, true);
 
   /* ─── CSS ────────────────────────────────────────────────────── */
   const CSS = `
-#patch-cal-overlay,
-#patch-ana-overlay {
+#patch-cal-overlay {
   position: fixed; inset: 0;
   background: var(--paper);
   z-index: 300;
@@ -125,7 +94,7 @@
   flex-direction: column;
   font-family: 'IBM Plex Mono', 'Courier New', monospace;
 }
-#patch-cal-overlay.show, #patch-ana-overlay.show { display: flex; }
+#patch-cal-overlay.show { display: flex; }
 
 .patch-titlebar {
   background: var(--ink); color: var(--paper);
@@ -140,15 +109,14 @@
 }
 .patch-close-btn:hover { background: var(--mark-err); color: var(--paper); border-color: var(--mark-err); }
 
-#patch-cal-btn, #patch-ana-btn {
+#patch-cal-btn {
   background: transparent; border: 1px solid var(--ink-ghost);
   color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace;
   font-size: 10px; letter-spacing: 0.5px; cursor: pointer;
   padding: 1px 7px; flex-shrink: 0; line-height: 1.6; transition: all 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-#patch-cal-btn:hover, #patch-cal-btn:active,
-#patch-ana-btn:hover, #patch-ana-btn:active { background: var(--ink-ghost); color: var(--ink); }
+#patch-cal-btn:hover, #patch-cal-btn:active { background: var(--ink-ghost); color: var(--ink); }
 
 /* ── Calendar ── */
 #patch-cal-body {
@@ -228,117 +196,15 @@
 .patch-cal-row-locked { color: var(--ink-ghost); font-style: italic; font-weight: 400; }
 .patch-cal-row-date { font-size: 9px; color: var(--ink-ghost); letter-spacing: 1px; flex-shrink: 0; text-transform: uppercase; }
 
-/* ── Summary ── */
-.patch-summary {
-  margin-top: 22px; border: 1px solid var(--rule-dark);
-  border-left: 3px solid var(--ink-soft); padding: 12px 16px; background: var(--paper-dim);
-}
-.patch-summary-hdr {
-  font-size: 9px; letter-spacing: 2px; color: var(--ink-ghost);
-  text-transform: uppercase; margin-bottom: 8px;
-}
-.patch-summary-hdr::before { content: '// '; }
-.patch-summary-text { font-size: 12px; line-height: 1.85; color: var(--ink-mid); white-space: pre-wrap; font-style: italic; }
-.patch-summary-pending { font-size: 10px; color: var(--mark-warn); letter-spacing: 1px; animation: blink 1.1s step-end infinite; }
-.patch-summary-err { font-size: 10px; color: var(--ink-ghost); letter-spacing: 1px; }
-
-/* ── Analyzer ── */
-#patch-ana-body {
-  flex: 1; overflow-y: auto; padding: 28px 32px 60px;
-  scrollbar-width: thin; scrollbar-color: var(--rule-dark) transparent;
-}
-.patch-ana-gate {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  height: 100%; gap: 12px; color: var(--ink-ghost); font-size: 11px;
-  letter-spacing: 2px; text-transform: uppercase; text-align: center; padding: 40px;
-}
-.patch-ana-gate .gate-icon { font-family: 'VT323', monospace; font-size: 64px; color: var(--ink-faint); line-height: 1; margin-bottom: 8px; }
-.patch-ana-spinner {
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
-  color: var(--ink-ghost); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; padding: 60px 0;
-}
-.patch-ana-spinner-dot { width: 8px; height: 8px; background: var(--ink-soft); animation: blink 1.1s step-end infinite; }
-.patch-section { margin-bottom: 30px; padding-bottom: 26px; border-bottom: 1px solid var(--rule); }
-.patch-section:last-child { border-bottom: none; }
-.patch-section-title { font-size: 9px; letter-spacing: 3px; color: var(--ink-ghost); text-transform: uppercase; margin-bottom: 12px; }
-.patch-section-title::before { content: '» '; color: var(--ink-faint); }
-.patch-section-body { font-size: 12px; line-height: 1.95; color: var(--ink-mid); white-space: pre-wrap; }
-.patch-stat-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.patch-stat-chip {
-  display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px;
-  border: 1px solid var(--rule-dark); font-size: 10px; letter-spacing: 1px;
-  color: var(--ink-soft); background: var(--paper-dim); text-transform: uppercase;
-}
-.patch-bar-track { display: flex; height: 5px; width: 100%; max-width: 460px; gap: 1px; margin-top: 6px; }
-.patch-ana-footer {
-  font-size: 9px; color: var(--ink-ghost); letter-spacing: 1px;
-  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--rule);
-}
-.patch-ana-footer::before { content: '// '; }
-
 @media (max-width: 640px) {
   #patch-cal-body { padding: 14px 12px 48px; }
-  #patch-ana-body { padding: 14px 14px 48px; }
   .patch-cal-grid { max-width: 100%; }
   .patch-day { min-height: 42px; gap: 2px; padding: 4px 1px; }
   .patch-day-num { font-size: 11px; }
   .patch-mini-fl { font-size: 6px; padding: 0 3px; }
   .patch-cal-nav { gap: 10px; }
   #patch-cal-month-lbl { min-width: 120px; font-size: 10px; }
-  .patch-section-body { font-size: 11px; }
 }
-
-/* ── Settings modal ── */
-#patch-cfg-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.72);
-  z-index: 500; display: none; align-items: center; justify-content: center;
-}
-#patch-cfg-overlay.show { display: flex; }
-#patch-cfg-box {
-  background: var(--paper); border: 1px solid var(--ink-mid);
-  width: min(480px, 94vw); font-family: 'IBM Plex Mono','Courier New',monospace;
-  font-size: 12px;
-}
-#patch-cfg-box .patch-titlebar { font-size: 10px; letter-spacing: 1.5px; }
-#patch-cfg-form { padding: 24px 22px 20px; display: flex; flex-direction: column; gap: 18px; }
-.patch-cfg-field { display: flex; flex-direction: column; gap: 6px; }
-.patch-cfg-label {
-  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
-  color: var(--ink-ghost);
-}
-.patch-cfg-label::before { content: '// '; }
-.patch-cfg-input, .patch-cfg-select {
-  background: var(--paper-dim); border: 1px solid var(--rule-dark); color: var(--ink);
-  font-family: 'IBM Plex Mono','Courier New',monospace; font-size: 11px;
-  padding: 7px 10px; outline: none; width: 100%; box-sizing: border-box;
-  transition: border-color 0.15s;
-}
-.patch-cfg-input:focus, .patch-cfg-select:focus { border-color: var(--ink-soft); }
-.patch-cfg-hint {
-  font-size: 9px; color: var(--ink-ghost); letter-spacing: 0.5px; line-height: 1.6;
-}
-.patch-cfg-hint a { color: var(--ink-soft); }
-.patch-cfg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
-.patch-cfg-btn {
-  background: transparent; border: 1px solid var(--rule-dark); color: var(--ink-soft);
-  font-family: 'IBM Plex Mono',monospace; font-size: 10px; letter-spacing: 1px;
-  padding: 5px 14px; cursor: pointer; transition: all 0.1s;
-}
-.patch-cfg-btn:hover { background: var(--ink-ghost); }
-.patch-cfg-btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.patch-cfg-btn.primary:hover { opacity: 0.85; }
-.patch-cfg-status { font-size: 10px; letter-spacing: 0.5px; min-height: 16px; }
-.patch-cfg-status.ok  { color: var(--mark-ok,  #6a9); }
-.patch-cfg-status.err { color: var(--mark-err, #c55); }
-#patch-setup-btn {
-  background: transparent; border: 1px solid var(--ink-ghost);
-  color: var(--ink-faint); font-family: 'IBM Plex Mono',monospace;
-  font-size: 10px; letter-spacing: 0.5px; cursor: pointer;
-  padding: 1px 7px; flex-shrink: 0; line-height: 1.6; transition: all 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-#patch-setup-btn:hover { background: var(--ink-ghost); color: var(--ink); }
-#patch-setup-btn.configured { color: var(--mark-ok, #6a9); border-color: var(--mark-ok, #6a9); }
 `;
 
   /* ─── INJECT CSS ─────────────────────────────────────────────── */
@@ -354,23 +220,9 @@
         id: 'patch-cal-btn', title: 'Calendar — browse by date', textContent: '◫ cal'
       });
       calBtn.addEventListener('click', openCalendar);
-
-      const anaBtn = Object.assign(document.createElement('button'), {
-        id: 'patch-ana-btn', title: 'Dream Analyzer — AI pattern analysis', textContent: '∿ analyze'
-      });
-      anaBtn.addEventListener('click', openAnalyzer);
-
-      const setupBtn = Object.assign(document.createElement('button'), {
-        id: 'patch-setup-btn', title: 'AI setup — configure OpenRouter key'
-      });
-      setupBtn.textContent = getApiKey() ? '⚙ ai ✓' : '⚙ setup';
-      if (getApiKey()) setupBtn.classList.add('configured');
-      setupBtn.addEventListener('click', openSettings);
-
-      themeBtn.before(calBtn, anaBtn, setupBtn);
+      themeBtn.before(calBtn);
     }
 
-    // Calendar overlay
     const calEl = document.createElement('div');
     calEl.id = 'patch-cal-overlay';
     calEl.innerHTML = `
@@ -389,99 +241,9 @@
       </div>`;
     document.body.appendChild(calEl);
 
-    // Analyzer overlay
-    const anaEl = document.createElement('div');
-    anaEl.id = 'patch-ana-overlay';
-    anaEl.innerHTML = `
-      <div class="patch-titlebar">
-        <span>DREAM_JOURNAL.EXE &mdash; Dream Analyzer</span>
-        <button class="patch-close-btn" id="patch-ana-close">[ close ]</button>
-      </div>
-      <div id="patch-ana-body">
-        <div class="patch-ana-spinner" id="patch-ana-spin">
-          <div class="patch-ana-spinner-dot"></div>
-          <span>Scanning dream patterns...</span>
-        </div>
-        <div id="patch-ana-result"></div>
-      </div>`;
-    document.body.appendChild(anaEl);
-
-    // Settings modal
-    const cfgEl = document.createElement('div');
-    cfgEl.id = 'patch-cfg-overlay';
-    const modelOpts = OR_MODELS.map(m =>
-      `<option value="${m.id}"${m.id===getModel()?' selected':''}>${m.label}</option>`
-    ).join('');
-    cfgEl.innerHTML = `
-      <div id="patch-cfg-box">
-        <div class="patch-titlebar">
-          <span>DREAM_JOURNAL.EXE &mdash; AI Setup</span>
-          <button class="patch-close-btn" id="patch-cfg-close">[ close ]</button>
-        </div>
-        <div id="patch-cfg-form">
-          <div class="patch-cfg-field">
-            <label class="patch-cfg-label">OpenRouter API key</label>
-            <input id="patch-cfg-key" class="patch-cfg-input" type="password"
-              placeholder="sk-or-v1-…" value="${xss(getApiKey())}" autocomplete="off" spellcheck="false"/>
-            <span class="patch-cfg-hint">
-              Free at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>.
-              Stored locally in your browser — never sent anywhere except OpenRouter.
-            </span>
-          </div>
-          <div class="patch-cfg-field">
-            <label class="patch-cfg-label">Model</label>
-            <select id="patch-cfg-model" class="patch-cfg-select">${modelOpts}</select>
-            <span class="patch-cfg-hint">All listed models are free-tier on OpenRouter ($0/request).</span>
-          </div>
-          <div class="patch-cfg-actions">
-            <span class="patch-cfg-status" id="patch-cfg-status"></span>
-            <button class="patch-cfg-btn" id="patch-cfg-test">test connection</button>
-            <button class="patch-cfg-btn primary" id="patch-cfg-save">save</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(cfgEl);
-
     document.getElementById('patch-cal-close').addEventListener('click', closeCalendar);
-    document.getElementById('patch-ana-close').addEventListener('click', closeAnalyzer);
-    document.getElementById('patch-cfg-close').addEventListener('click', closeSettings);
-    cfgEl.addEventListener('click', e => { if (e.target === cfgEl) closeSettings(); });
-
     document.getElementById('patch-cal-prev').addEventListener('click', () => { P.calDate.setMonth(P.calDate.getMonth()-1); renderCal(); });
     document.getElementById('patch-cal-next').addEventListener('click', () => { P.calDate.setMonth(P.calDate.getMonth()+1); renderCal(); });
-
-    document.getElementById('patch-cfg-save').addEventListener('click', () => {
-      const key   = document.getElementById('patch-cfg-key').value.trim();
-      const model = document.getElementById('patch-cfg-model').value;
-      saveCfg({ apiKey: key, model });
-      const btn = document.getElementById('patch-setup-btn');
-      if (btn) { btn.textContent = key ? '⚙ ai ✓' : '⚙ setup'; btn.classList.toggle('configured', !!key); }
-      setStatus('ok', 'saved.');
-      P.summaryCache.clear(); P.analysisCache = null;
-    });
-
-    document.getElementById('patch-cfg-test').addEventListener('click', async () => {
-      const key   = document.getElementById('patch-cfg-key').value.trim();
-      const model = document.getElementById('patch-cfg-model').value;
-      if (!key) { setStatus('err', 'enter a key first.'); return; }
-      setStatus('', 'testing…');
-      try {
-        const result = await callOpenRouter('Say: OK', 10, key, model);
-        setStatus('ok', `✓ connected — model replied: "${result.slice(0,40)}"`);
-      } catch(e) {
-        setStatus('err', `✗ ${e.message.slice(0,80)}`);
-      }
-    });
-  }
-
-  function openSettings()  { document.getElementById('patch-cfg-overlay').classList.add('show'); }
-  function closeSettings() { document.getElementById('patch-cfg-overlay').classList.remove('show'); }
-
-  function setStatus(cls, msg) {
-    const el = document.getElementById('patch-cfg-status');
-    if (!el) return;
-    el.className = 'patch-cfg-status' + (cls ? ' ' + cls : '');
-    el.textContent = msg;
   }
 
   /* ─── CALENDAR ───────────────────────────────────────────────── */
@@ -556,192 +318,9 @@
     requestAnimationFrame(()=>{ const c=document.querySelectorAll('#entry-list .ec'); if(c[idx]) c[idx].click(); });
   }
 
-  /* ─── SUMMARIZER ─────────────────────────────────────────────── */
-  let _sumTimer=null;
-  const entryObs=new MutationObserver(()=>{ clearTimeout(_sumTimer); _sumTimer=setTimeout(trySummary,320); });
-
-  function trySummary() {
-    const display=document.getElementById('entry-display');
-    if (!display||display.style.display==='none') return;
-    const bodyEl=display.querySelector('.ed-body');
-    if (!bodyEl||bodyEl.classList.contains('enc')||bodyEl.classList.contains('decrypting')) return;
-    const content=bodyEl.textContent.trim(); if (!content) return;
-    if (display.querySelector('.patch-summary')) return;
-    const titleEl=display.querySelector('[id^="edt-"]');
-    const id=titleEl?titleEl.id.replace('edt-',''):null;
-    injectSummaryBlock(display,id,content);
-  }
-
-  function injectSummaryBlock(display,id,content) {
-    const block=document.createElement('div'); block.className='patch-summary';
-    if (id&&P.summaryCache.has(id)) {
-      block.innerHTML=`<div class="patch-summary-hdr">2-line summary</div><div class="patch-summary-text">${xss(P.summaryCache.get(id))}</div>`;
-    } else {
-      block.innerHTML=`<div class="patch-summary-hdr">2-line summary</div><div class="patch-summary-pending">summarizing...</div>`;
-      fetchSummary(block,id,content);
-    }
-    const actions=display.querySelector('.ed-actions');
-    if (actions) actions.before(block); else display.appendChild(block);
-  }
-
-  async function fetchSummary(block,id,content) {
-    const pendEl=block.querySelector('.patch-summary-pending');
-    try {
-      const result=await callClaude(
-        `Summarize this dream journal entry in exactly 2 evocative but concise lines.\nNo preamble. Just the 2 lines.\n\nDream:\n${content.slice(0,2500)}`,
-        160
-      );
-      if (id) P.summaryCache.set(id,result);
-      if (pendEl) pendEl.replaceWith(Object.assign(document.createElement('div'),{className:'patch-summary-text',textContent:result}));
-    } catch(e) {
-      console.warn('[patch] summary:',e);
-      if (pendEl) { pendEl.className='patch-summary-err'; pendEl.textContent='[proxy unreachable — is it running?]'; }
-    }
-  }
-
-  /* ─── ANALYZER ───────────────────────────────────────────────── */
-  function openAnalyzer() { document.getElementById('patch-ana-overlay').classList.add('show'); runAnalysis(); }
-  function closeAnalyzer() { document.getElementById('patch-ana-overlay').classList.remove('show'); }
-
-  async function runAnalysis() {
-    const spinEl=document.getElementById('patch-ana-spin'), resultEl=document.getElementById('patch-ana-result');
-    if (!P.pw||P.decrypted.size===0) {
-      spinEl.style.display='none'; resultEl.style.display='block';
-      resultEl.innerHTML=`<div class="patch-ana-gate"><div class="gate-icon">▓</div><div>journal is locked</div><div style="margin-top:8px;font-size:9px;color:var(--ink-ghost)">unlock your journal to analyze dreams</div></div>`;
-      return;
-    }
-    if (P.analysisCache) { spinEl.style.display='none'; resultEl.style.display='block'; resultEl.innerHTML=P.analysisCache; return; }
-    spinEl.style.display='flex'; resultEl.style.display='none'; resultEl.innerHTML='';
-    try {
-      const dreams=[...P.decrypted.values()];
-      const corpus=dreams.map((d,i)=>`[DREAM ${i+1}] Date: ${d.date} | Type: ${d.flair}\nTitle: ${d.title}\n${d.content}`).join('\n\n---\n\n').slice(0,9000);
-      const flairCounts={}; dreams.forEach(d=>{flairCounts[d.flair]=(flairCounts[d.flair]||0)+1;});
-
-      const raw=await callClaude(
-`You are a dream analyst. Analyze this dream journal (${dreams.length} entries). Use EXACTLY these section headers.
-Be specific — reference actual details from the dreams.
-
-RECURRING_THEMES
-[3-5 recurring motifs or narrative structures]
-
-COMMON_SYMBOLS
-[specific objects, figures, colors, sensations that recur]
-
-DREAM_LOCATIONS
-[recurring settings and what they might represent]
-
-PSYCHOLOGICAL_PATTERNS
-[what the dreams reveal about the dreamer's inner world]
-
-POSSIBLE_MEANINGS
-[interpretations of the most prominent pattern clusters]
-
-CLARITY_TRAJECTORY
-[is recall/lucidity improving over time?]
-
-SANITY_INDEX
-[playful 0-100 score with a one-line interpretation]
-
-Keep each section under 6 lines. Speak to the dreamer directly.
-
-DREAMS:
-${corpus}`, 1200);
-
-      const html=buildAnalysisHTML(raw,flairCounts,dreams.length);
-      P.analysisCache=html; spinEl.style.display='none'; resultEl.style.display='block'; resultEl.innerHTML=html;
-    } catch(e) {
-      console.error('[patch] analysis:',e);
-      spinEl.style.display='none'; resultEl.style.display='block';
-      resultEl.innerHTML=`<div class="patch-ana-gate"><div class="gate-icon">!</div><div>analysis failed</div><div style="margin-top:8px;font-size:9px;color:var(--ink-ghost)">${xss(e.message||'unknown')} — is your proxy running?</div></div>`;
-    }
-  }
-
-  const ANA_SECTIONS=[
-    ['RECURRING_THEMES','recurring themes'],['COMMON_SYMBOLS','common symbols & elements'],
-    ['DREAM_LOCATIONS','locations & settings'],['PSYCHOLOGICAL_PATTERNS','psychological patterns'],
-    ['POSSIBLE_MEANINGS','possible meanings'],['CLARITY_TRAJECTORY','clarity trajectory'],
-    ['SANITY_INDEX','sanity index'],
-  ];
-
-  function buildAnalysisHTML(raw,flairCounts,total) {
-    const flairOrder=['astral','lucid','vivid','vague','no_record'];
-    const flairLabel={no_record:'no rec',vague:'vague',vivid:'vivid',lucid:'lucid',astral:'astral'};
-    const flairAlpha={no_record:0.25,vague:0.35,vivid:0.55,lucid:0.75,astral:1};
-    let html=`<div class="patch-section"><div class="patch-section-title">classification breakdown — ${total} entr${total>1?'ies':'y'}</div><div class="patch-stat-row">`;
-    for (const f of flairOrder) {
-      if (!flairCounts[f]) continue;
-      const pct=Math.round((flairCounts[f]/total)*100);
-      html+=`<span class="patch-stat-chip"><span class="patch-mini-fl fl-${f}">${flairLabel[f]}</span>${flairCounts[f]}&thinsp;·&thinsp;${pct}%</span>`;
-    }
-    html+=`</div><div class="patch-bar-track">`;
-    for (const f of flairOrder) {
-      if (!flairCounts[f]) continue;
-      html+=`<div class="patch-bar-seg" style="flex:${(flairCounts[f]/total)*100};background:var(--ink-mid);opacity:${flairAlpha[f]}"></div>`;
-    }
-    html+=`</div></div>`;
-    for (const [key,label] of ANA_SECTIONS) {
-      const re=new RegExp(key+'\\s*\\n([\\s\\S]*?)(?='+ANA_SECTIONS.map(s=>s[0]).filter(k=>k!==key).join('|')+'|$)','i');
-      const m=raw.match(re), body=m?m[1].trim():''; if (!body) continue;
-      html+=`<div class="patch-section"><div class="patch-section-title">${label}</div><div class="patch-section-body">${xss(body)}</div></div>`;
-    }
-    html+=`<div class="patch-ana-footer">analysis via local claude proxy · ${new Date().toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})}</div>`;
-    return html;
-  }
-
-  /* ─── CLAUDE API  →  OpenRouter (direct) or local proxy ─────── */
-  async function callClaude(prompt, maxTokens=500) {
-    const key = getApiKey();
-    if (key) return callOpenRouter(prompt, maxTokens, key, getModel());
-    return callLocalProxy(prompt, maxTokens);
-  }
-
-  async function callOpenRouter(prompt, maxTokens, key, model) {
-    const r = await fetch(CFG.OR_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': 'Bearer ' + key,
-        'HTTP-Referer':  location.href,
-        'X-Title':       'Dream Journal'
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    if (!r.ok) { const t = await r.text(); throw new Error(`OpenRouter ${r.status}: ${t.slice(0,120)}`); }
-    const data = await r.json();
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    return (data.choices?.[0]?.message?.content || '').trim();
-  }
-
-  async function callLocalProxy(prompt, maxTokens) {
-    const r = await fetch(CFG.LOCAL_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type':       'application/json',
-        'x-api-key':          CFG.LOCAL_TOKEN,
-        'anthropic-version':  '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    if (!r.ok) { const t = await r.text(); throw new Error(`proxy ${r.status}: ${t.slice(0,120)}`); }
-    const data = await r.json();
-    return data.content.map(c => c.text || '').filter(Boolean).join('');
-  }
-
-  function xss(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
   /* ─── INIT ───────────────────────────────────────────────────── */
   function boot() {
     injectCSS(); injectUI();
-    const display=document.getElementById('entry-display');
-    if (display) entryObs.observe(display,{childList:true,subtree:true});
     pFetchEntries();
   }
   if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot);
