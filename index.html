@@ -917,7 +917,7 @@ html.light-mode .fi[type="time"] { color-scheme: light; }
   <span class="sep">|</span>
   <span class="st-dim">AES-256-GCM</span>
   <span class="sep">|</span>
-  <span class="st-dim">shared store: on</span>
+  <span class="st-dim">supabase sync: on</span>
   <span id="sb-entries">entries: 0</span>
   <button id="theme-toggle" title="Toggle light/dark mode">☀</button>
 </div>
@@ -987,23 +987,30 @@ const HARDCODED_PW = 'anfang';
 
 const S = { pw: null, unlocked: false, entries: [], selId: null, cache: new Map() };
 
-// ── SHARED STORAGE ──
+// ── SUPABASE STORAGE ──
+const SB_URL  = 'https://szyyypsfsxkwgthsqsrb.supabase.co';
+const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6eXl5cHNmc3hrd2d0aHNxc3JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNTIyNzMsImV4cCI6MjA5NTcyODI3M30.xWWl5sdaGZjubnz_uZOQM5lNLle-sTe7IjWII8GhN9k';
+const SB_HDR  = { 'Content-Type':'application/json', 'apikey': SB_KEY, 'Authorization': 'Bearer '+SB_KEY };
+
 const DB = {
-  async get(k) {
-    if (!window.storage) return null;
-    try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : null; } catch { return null; }
+  async getAll() {
+    const r = await fetch(`${SB_URL}/rest/v1/dream_entries?select=id,data&order=created_at.desc`, { headers: SB_HDR });
+    if (!r.ok) return [];
+    const rows = await r.json();
+    return rows.map(row => row.data);
   },
-  async set(k, v) {
-    if (!window.storage) return;
-    try { await window.storage.set(k, JSON.stringify(v), true); } catch(e) { console.error(e); }
+  async set(id, entry) {
+    // upsert by id
+    const r = await fetch(`${SB_URL}/rest/v1/dream_entries`, {
+      method: 'POST',
+      headers: { ...SB_HDR, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({ id, data: entry })
+    });
+    if (!r.ok) { const t = await r.text(); console.error('SB set error:', t); }
   },
-  async list(p) {
-    if (!window.storage) return [];
-    try { const r = await window.storage.list(p, true); return r ? r.keys : []; } catch { return []; }
-  },
-  async del(k) {
-    if (!window.storage) return;
-    try { await window.storage.delete(k, true); } catch {}
+  async del(id) {
+    const r = await fetch(`${SB_URL}/rest/v1/dream_entries?id=eq.${id}`, { method: 'DELETE', headers: SB_HDR });
+    if (!r.ok) { const t = await r.text(); console.error('SB del error:', t); }
   }
 };
 
@@ -1048,8 +1055,6 @@ async function decStr(obj, pw) {
   const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(obj.iv)},key,unb64(obj.data));
   return dec.decode(pt);
 }
-async function savePwCheck(pw) { await DB.set('dj_pwcheck', await encStr(SENTINEL,pw)); }
-
 // ── ANIMATION ──
 function randG() { return GC[Math.floor(Math.random()*GC.length)]; }
 function animDecrypt(el, text, speed=11) {
@@ -1096,14 +1101,15 @@ function $id(id) { return document.getElementById(id); }
 
 // ── STORAGE OPS ──
 async function loadEntries() {
-  const keys=await DB.list('dj_e:'), arr=[];
-  for(const k of keys){const e=await DB.get(k);if(e)arr.push(e);}
-  arr.sort((a,b)=>new Date(b.date)-new Date(a.date));
-  S.entries=arr;
+  try {
+    const arr = await DB.getAll();
+    arr.sort((a,b)=>new Date(b.date)-new Date(a.date));
+    S.entries = arr;
+  } catch(e) { console.error('loadEntries:', e); S.entries = []; }
 }
-async function saveEntry(e) { await DB.set('dj_e:'+e.id,e); }
+async function saveEntry(e) { await DB.set(e.id, e); }
 async function removeEntry(id) {
-  await DB.del('dj_e:'+id);
+  await DB.del(id);
   S.entries=S.entries.filter(e=>e.id!==id);
   S.cache.delete(id);
   if(S.selId===id){S.selId=null;showEmpty();}
@@ -1189,9 +1195,6 @@ async function attemptUnlock(pw) {
     setTimeout(()=>{msg.textContent='';msg.className='';},2000);
     return;
   }
-  const existing=await DB.get('dj_pwcheck');
-  if(!existing) await savePwCheck(pw);
-
   S.pw=pw; S.unlocked=true; S.cache.clear();
   updateLockUI(true);
   msg.textContent='decrypting...'; msg.className='inf';
