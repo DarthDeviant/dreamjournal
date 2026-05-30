@@ -5,8 +5,8 @@
    Uses your local Claude proxy at localhost:8082 — no API key needed.
 
    HOW TO USE:
-   1. Start your proxy (self-contained — no other flags needed):
-        uv run uvicorn server:app --host 0.0.0.0 --port 8082
+   1. Start your proxy:
+        ANTHROPIC_AUTH_TOKEN="freecc" ANTHROPIC_BASE_URL="http://localhost:8082" claude
    2. Add before </body>:  <script src="patch.js"></script>
 ═══════════════════════════════════════════════════════════════════ */
 
@@ -15,14 +15,34 @@
 
   /* ─── CONFIG ─────────────────────────────────────────────────── */
   const CFG = {
-    CLAUDE_URL:   'http://localhost:8082/v1/messages',
-    CLAUDE_TOKEN: 'freecc',
+    LOCAL_URL:    'http://localhost:8082/v1/messages',
+    LOCAL_TOKEN:  'freecc',
+    OR_URL:       'https://openrouter.ai/api/v1/chat/completions',
     SB_URL: 'https://szyyypsfsxkwgthsqsrb.supabase.co',
     SB_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6eXl5cHNmc3hrd2d0aHNxc3JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNTIyNzMsImV4cCI6MjA5NTcyODI3M30.xWWl5sdaGZjubnz_uZOQM5lNLle-sTe7IjWII8GhN9k'
   };
+
+  const OR_MODELS = [
+    { id: 'minimax/minimax-m2.5:free',         label: 'MiniMax M2.5  (free)' },
+    { id: 'deepseek/deepseek-r1:free',          label: 'DeepSeek R1   (free)' },
+    { id: 'google/gemma-3-27b-it:free',         label: 'Gemma 3 27B   (free)' },
+    { id: 'meta-llama/llama-4-scout:free',      label: 'Llama 4 Scout (free)' },
+    { id: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B    (free)' },
+  ];
+
+  /* ─── SETTINGS (localStorage) ────────────────────────────────── */
+  const STORE_KEY = 'dj_patch_cfg';
+  function loadCfg() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch { return {}; }
+  }
+  function saveCfg(obj) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(obj)); } catch {}
+  }
+  function getApiKey()  { return loadCfg().apiKey  || ''; }
+  function getModel()   { return loadCfg().model   || OR_MODELS[0].id; }
   const SB_HDR = {
     'Content-Type': 'application/json',
-    'apikey': CFG.SB_KEY,
+    'apikey':        CFG.SB_KEY,
     'Authorization': 'Bearer ' + CFG.SB_KEY
   };
 
@@ -87,20 +107,10 @@
         await pFetchEntries();
         await pDecryptAll();
         P.analysisCache = null;
-        // If decryption yielded nothing, the passphrase is wrong.
-        // Play encryption animation then force-lock even if journal was open.
-        if (P.decrypted.size === 0) {
-          P.pw = null; P.summaryCache.clear();
-          showEncryptAnim(() => { if (typeof window.lock === 'function') window.lock(); });
-        }
       }
     }
     if (e.key === 'Escape') {
-      const wasUnlocked = typeof S !== 'undefined' && S.unlocked;
       P.pw = null; P.decrypted.clear(); P.summaryCache.clear(); P.analysisCache = null;
-      if (wasUnlocked) {
-        showEncryptAnim(() => { if (typeof window.lock === 'function') window.lock(); });
-      }
     }
   }, true);
 
@@ -278,115 +288,62 @@
   .patch-section-body { font-size: 11px; }
 }
 
-/* ── Encryption animation overlay ── */
-#patch-enc-overlay {
-  position: fixed; inset: 0; z-index: 9999;
-  background: var(--paper);
-  display: none; flex-direction: column;
-  align-items: center; justify-content: center;
-  font-family: 'IBM Plex Mono', 'Courier New', monospace;
-  overflow: hidden;
-  pointer-events: all;
+/* ── Settings modal ── */
+#patch-cfg-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+  z-index: 500; display: none; align-items: center; justify-content: center;
 }
-#patch-enc-overlay.active { display: flex; }
-#patch-enc-canvas {
-  position: absolute; inset: 0;
-  font-size: 11px; line-height: 1.45; letter-spacing: 1px;
-  color: var(--ink-ghost); white-space: pre; overflow: hidden;
-  padding: 8px;
+#patch-cfg-overlay.show { display: flex; }
+#patch-cfg-box {
+  background: var(--paper); border: 1px solid var(--ink-mid);
+  width: min(480px, 94vw); font-family: 'IBM Plex Mono','Courier New',monospace;
+  font-size: 12px;
 }
-#patch-enc-label {
-  position: relative; z-index: 2;
-  font-size: 11px; letter-spacing: 4px; text-transform: uppercase;
-  color: var(--ink-soft); opacity: 0;
-  transition: opacity 0.25s;
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
+#patch-cfg-box .patch-titlebar { font-size: 10px; letter-spacing: 1.5px; }
+#patch-cfg-form { padding: 24px 22px 20px; display: flex; flex-direction: column; gap: 18px; }
+.patch-cfg-field { display: flex; flex-direction: column; gap: 6px; }
+.patch-cfg-label {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--ink-ghost);
 }
-#patch-enc-label.show { opacity: 1; }
-#patch-enc-bar {
-  width: 160px; height: 2px; background: var(--rule-dark); overflow: hidden;
+.patch-cfg-label::before { content: '// '; }
+.patch-cfg-input, .patch-cfg-select {
+  background: var(--paper-dim); border: 1px solid var(--rule-dark); color: var(--ink);
+  font-family: 'IBM Plex Mono','Courier New',monospace; font-size: 11px;
+  padding: 7px 10px; outline: none; width: 100%; box-sizing: border-box;
+  transition: border-color 0.15s;
 }
-#patch-enc-bar-fill {
-  height: 100%; width: 0%; background: var(--ink-soft);
-  transition: width 0.05s linear;
+.patch-cfg-input:focus, .patch-cfg-select:focus { border-color: var(--ink-soft); }
+.patch-cfg-hint {
+  font-size: 9px; color: var(--ink-ghost); letter-spacing: 0.5px; line-height: 1.6;
 }
+.patch-cfg-hint a { color: var(--ink-soft); }
+.patch-cfg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.patch-cfg-btn {
+  background: transparent; border: 1px solid var(--rule-dark); color: var(--ink-soft);
+  font-family: 'IBM Plex Mono',monospace; font-size: 10px; letter-spacing: 1px;
+  padding: 5px 14px; cursor: pointer; transition: all 0.1s;
+}
+.patch-cfg-btn:hover { background: var(--ink-ghost); }
+.patch-cfg-btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.patch-cfg-btn.primary:hover { opacity: 0.85; }
+.patch-cfg-status { font-size: 10px; letter-spacing: 0.5px; min-height: 16px; }
+.patch-cfg-status.ok  { color: var(--mark-ok,  #6a9); }
+.patch-cfg-status.err { color: var(--mark-err, #c55); }
+#patch-setup-btn {
+  background: transparent; border: 1px solid var(--ink-ghost);
+  color: var(--ink-faint); font-family: 'IBM Plex Mono',monospace;
+  font-size: 10px; letter-spacing: 0.5px; cursor: pointer;
+  padding: 1px 7px; flex-shrink: 0; line-height: 1.6; transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+#patch-setup-btn:hover { background: var(--ink-ghost); color: var(--ink); }
+#patch-setup-btn.configured { color: var(--mark-ok, #6a9); border-color: var(--mark-ok, #6a9); }
 `;
 
   /* ─── INJECT CSS ─────────────────────────────────────────────── */
   function injectCSS() {
     document.head.appendChild(Object.assign(document.createElement('style'), { textContent: CSS }));
-  }
-
-  /* ─── ENCRYPTION ANIMATION ───────────────────────────────────── */
-  const ENC_CHARS = '░▒▓▄▀■□-~*+=#@&%?!./|:;ABCDEFGHJKMNPQRSTUVXYZabcdefghjkmnpqrstuvxyz0123456789';
-  function _rndCh() { return ENC_CHARS[Math.floor(Math.random() * ENC_CHARS.length)]; }
-
-  function injectEncOverlay() {
-    const el = document.createElement('div');
-    el.id = 'patch-enc-overlay';
-    el.innerHTML = `
-      <div id="patch-enc-canvas"></div>
-      <div id="patch-enc-label">
-        <span>encrypting...</span>
-        <div id="patch-enc-bar"><div id="patch-enc-bar-fill"></div></div>
-      </div>`;
-    document.body.appendChild(el);
-  }
-
-  function showEncryptAnim(onDone) {
-    const overlay = document.getElementById('patch-enc-overlay');
-    const canvas  = document.getElementById('patch-enc-canvas');
-    const label   = document.getElementById('patch-enc-label');
-    const fill    = document.getElementById('patch-enc-bar-fill');
-    if (!overlay) { onDone?.(); return; }
-
-    // Build a grid of random chars that fills the viewport
-    const cols = Math.ceil(window.innerWidth  / 8) + 2;
-    const rows = Math.ceil(window.innerHeight / 16) + 2;
-    let grid = Array.from({ length: rows }, () =>
-      Array.from({ length: cols }, _rndCh)
-    );
-    const render = () => { canvas.textContent = grid.map(r => r.join('')).join('\n'); };
-
-    overlay.classList.add('active');
-    label.classList.remove('show');
-    fill.style.width = '0%';
-    render();
-
-    let frame = 0;
-    const TOTAL_FRAMES = 36;   // ~900 ms of scramble at ~25 fps
-    let pct = 0;
-
-    const ticker = setInterval(() => {
-      frame++;
-      pct = Math.min(100, Math.round((frame / TOTAL_FRAMES) * 100));
-      fill.style.width = pct + '%';
-
-      // Each frame: replace a random subset of cells — density increases over time
-      const density = 0.18 + (frame / TOTAL_FRAMES) * 0.55;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (Math.random() < density) grid[r][c] = _rndCh();
-        }
-      }
-      render();
-
-      if (frame === Math.floor(TOTAL_FRAMES * 0.45)) label.classList.add('show');
-
-      if (frame >= TOTAL_FRAMES) {
-        clearInterval(ticker);
-        // Fade out
-        overlay.style.transition = 'opacity 0.35s';
-        overlay.style.opacity = '0';
-        setTimeout(() => {
-          overlay.classList.remove('active');
-          overlay.style.transition = '';
-          overlay.style.opacity = '';
-          label.classList.remove('show');
-          onDone?.();
-        }, 370);
-      }
-    }, 25);
   }
 
   /* ─── INJECT UI ──────────────────────────────────────────────── */
@@ -403,7 +360,14 @@
       });
       anaBtn.addEventListener('click', openAnalyzer);
 
-      themeBtn.before(calBtn, anaBtn);
+      const setupBtn = Object.assign(document.createElement('button'), {
+        id: 'patch-setup-btn', title: 'AI setup — configure OpenRouter key'
+      });
+      setupBtn.textContent = getApiKey() ? '⚙ ai ✓' : '⚙ setup';
+      if (getApiKey()) setupBtn.classList.add('configured');
+      setupBtn.addEventListener('click', openSettings);
+
+      themeBtn.before(calBtn, anaBtn, setupBtn);
     }
 
     // Calendar overlay
@@ -442,10 +406,82 @@
       </div>`;
     document.body.appendChild(anaEl);
 
+    // Settings modal
+    const cfgEl = document.createElement('div');
+    cfgEl.id = 'patch-cfg-overlay';
+    const modelOpts = OR_MODELS.map(m =>
+      `<option value="${m.id}"${m.id===getModel()?' selected':''}>${m.label}</option>`
+    ).join('');
+    cfgEl.innerHTML = `
+      <div id="patch-cfg-box">
+        <div class="patch-titlebar">
+          <span>DREAM_JOURNAL.EXE &mdash; AI Setup</span>
+          <button class="patch-close-btn" id="patch-cfg-close">[ close ]</button>
+        </div>
+        <div id="patch-cfg-form">
+          <div class="patch-cfg-field">
+            <label class="patch-cfg-label">OpenRouter API key</label>
+            <input id="patch-cfg-key" class="patch-cfg-input" type="password"
+              placeholder="sk-or-v1-…" value="${xss(getApiKey())}" autocomplete="off" spellcheck="false"/>
+            <span class="patch-cfg-hint">
+              Free at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>.
+              Stored locally in your browser — never sent anywhere except OpenRouter.
+            </span>
+          </div>
+          <div class="patch-cfg-field">
+            <label class="patch-cfg-label">Model</label>
+            <select id="patch-cfg-model" class="patch-cfg-select">${modelOpts}</select>
+            <span class="patch-cfg-hint">All listed models are free-tier on OpenRouter ($0/request).</span>
+          </div>
+          <div class="patch-cfg-actions">
+            <span class="patch-cfg-status" id="patch-cfg-status"></span>
+            <button class="patch-cfg-btn" id="patch-cfg-test">test connection</button>
+            <button class="patch-cfg-btn primary" id="patch-cfg-save">save</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(cfgEl);
+
     document.getElementById('patch-cal-close').addEventListener('click', closeCalendar);
     document.getElementById('patch-ana-close').addEventListener('click', closeAnalyzer);
+    document.getElementById('patch-cfg-close').addEventListener('click', closeSettings);
+    cfgEl.addEventListener('click', e => { if (e.target === cfgEl) closeSettings(); });
+
     document.getElementById('patch-cal-prev').addEventListener('click', () => { P.calDate.setMonth(P.calDate.getMonth()-1); renderCal(); });
     document.getElementById('patch-cal-next').addEventListener('click', () => { P.calDate.setMonth(P.calDate.getMonth()+1); renderCal(); });
+
+    document.getElementById('patch-cfg-save').addEventListener('click', () => {
+      const key   = document.getElementById('patch-cfg-key').value.trim();
+      const model = document.getElementById('patch-cfg-model').value;
+      saveCfg({ apiKey: key, model });
+      const btn = document.getElementById('patch-setup-btn');
+      if (btn) { btn.textContent = key ? '⚙ ai ✓' : '⚙ setup'; btn.classList.toggle('configured', !!key); }
+      setStatus('ok', 'saved.');
+      P.summaryCache.clear(); P.analysisCache = null;
+    });
+
+    document.getElementById('patch-cfg-test').addEventListener('click', async () => {
+      const key   = document.getElementById('patch-cfg-key').value.trim();
+      const model = document.getElementById('patch-cfg-model').value;
+      if (!key) { setStatus('err', 'enter a key first.'); return; }
+      setStatus('', 'testing…');
+      try {
+        const result = await callOpenRouter('Say: OK', 10, key, model);
+        setStatus('ok', `✓ connected — model replied: "${result.slice(0,40)}"`);
+      } catch(e) {
+        setStatus('err', `✗ ${e.message.slice(0,80)}`);
+      }
+    });
+  }
+
+  function openSettings()  { document.getElementById('patch-cfg-overlay').classList.add('show'); }
+  function closeSettings() { document.getElementById('patch-cfg-overlay').classList.remove('show'); }
+
+  function setStatus(cls, msg) {
+    const el = document.getElementById('patch-cfg-status');
+    if (!el) return;
+    el.className = 'patch-cfg-status' + (cls ? ' ' + cls : '');
+    el.textContent = msg;
   }
 
   /* ─── CALENDAR ───────────────────────────────────────────────── */
@@ -652,31 +688,58 @@ ${corpus}`, 1200);
     return html;
   }
 
-  /* ─── CLAUDE API  →  local proxy ────────────────────────────── */
+  /* ─── CLAUDE API  →  OpenRouter (direct) or local proxy ─────── */
   async function callClaude(prompt, maxTokens=500) {
-    const r=await fetch(CFG.CLAUDE_URL, {
+    const key = getApiKey();
+    if (key) return callOpenRouter(prompt, maxTokens, key, getModel());
+    return callLocalProxy(prompt, maxTokens);
+  }
+
+  async function callOpenRouter(prompt, maxTokens, key, model) {
+    const r = await fetch(CFG.OR_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': CFG.CLAUDE_TOKEN,
-        'anthropic-version': '2023-06-01'
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer ' + key,
+        'HTTP-Referer':  location.href,
+        'X-Title':       'Dream Journal'
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    if (!r.ok) { const t = await r.text(); throw new Error(`OpenRouter ${r.status}: ${t.slice(0,120)}`); }
+    const data = await r.json();
+    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    return (data.choices?.[0]?.message?.content || '').trim();
+  }
+
+  async function callLocalProxy(prompt, maxTokens) {
+    const r = await fetch(CFG.LOCAL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type':       'application/json',
+        'x-api-key':          CFG.LOCAL_TOKEN,
+        'anthropic-version':  '2023-06-01'
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: maxTokens,
-        messages: [{ role:'user', content:prompt }]
+        messages: [{ role: 'user', content: prompt }]
       })
     });
-    if (!r.ok) { const t=await r.text(); throw new Error(`proxy ${r.status}: ${t.slice(0,120)}`); }
-    const data=await r.json();
-    return data.content.map(c=>c.text||'').filter(Boolean).join('');
+    if (!r.ok) { const t = await r.text(); throw new Error(`proxy ${r.status}: ${t.slice(0,120)}`); }
+    const data = await r.json();
+    return data.content.map(c => c.text || '').filter(Boolean).join('');
   }
 
   function xss(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   /* ─── INIT ───────────────────────────────────────────────────── */
   function boot() {
-    injectCSS(); injectUI(); injectEncOverlay();
+    injectCSS(); injectUI();
     const display=document.getElementById('entry-display');
     if (display) entryObs.observe(display,{childList:true,subtree:true});
     pFetchEntries();
