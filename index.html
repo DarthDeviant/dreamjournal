@@ -1326,7 +1326,11 @@ async function init() {
     else if(e.key==='Escape')closeModal();
   });
 }
-
+window.S          = S;
+window.encStr     = encStr;
+window.saveEntry  = saveEntry;
+window.renderList = renderList;
+window.notify     = notify;
 window.removeEntry=removeEntry;
 document.addEventListener('DOMContentLoaded',init);
 </script>
