@@ -227,7 +227,7 @@
     calEl.id = 'patch-cal-overlay';
     calEl.innerHTML = `
       <div class="patch-titlebar">
-        <span>DREAM_JOURNAL.EXE &mdash; Calendar Archive</span>
+        <span>Calendar Archive</span>
         <button class="patch-close-btn" id="patch-cal-close">[ close ]</button>
       </div>
       <div id="patch-cal-body">
