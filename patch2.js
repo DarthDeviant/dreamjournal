@@ -2,24 +2,13 @@
    patch2.js  —  Dream Journal extensions  (v2)
    • Dream Statistics panel
    • Proper-name frequency colouring in entry bodies
-   • <cs>name</cs> censoring — shows ████ in viewer,
-     revealed only via terminal /uncensor command
+   • <cs>name</cs> censoring — encrypted at save time with AES-GCM,
+     shows ████ in viewer, revealed only via /uncensor
    • Terminal overlay  (user: der_anfang / pass: anfangistende)
      commands: /help /list /edit /delete /stats /uncensor /clear /exit
    • Edited-at badge on entries
-   • Encrypting flash animation on wrong passphrase (then locks)
-   • Close button (×) closes the page
-
-   ── REQUIRED HTML CHANGE ────────────────────────────────────────
-   In the main inline <script>, just before the line
-       window.removeEntry = removeEntry;
-   add:
-       window.S          = S;
-       window.encStr     = encStr;
-       window.saveEntry  = saveEntry;
-       window.renderList = renderList;
-       window.notify     = notify;
-       window.lock       = lock;
+   • Encrypting flash + real lock on wrong passphrase or ESC
+   • Close button (×) with fallback chain
 ═══════════════════════════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', () => setTimeout(p2init, 400));
@@ -28,31 +17,17 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(p2init, 400));
    STYLES
 ════════════════════════════════════════════ */
 const P2_CSS = `
-/* ── name highlights ── */
 .nh-high { color:#c9b8f0; border-bottom:1px dotted #c9b8f066; }
 .nh-mid  { color:#7ecec4; border-bottom:1px dotted #7ecec466; }
 .nh-low  { color:#e8d87a; border-bottom:1px dotted #e8d87a66; }
 
-/* ── censored blocks ── */
 .cs-block {
-  display:inline-block;
-  background:var(--ink);
-  color:var(--ink);
-  letter-spacing:2px;
-  padding:0 3px;
-  border-radius:0;
-  user-select:none;
-  cursor:default;
-  font-size:.9em;
-  vertical-align:baseline;
-  transition:background .15s, color .15s;
+  display:inline-block; background:var(--ink); color:var(--ink);
+  letter-spacing:2px; padding:0 3px; user-select:none; cursor:default;
+  font-size:.9em; vertical-align:baseline; transition:background .15s, color .15s;
 }
-.cs-block:hover {
-  background:var(--mark-err);
-  color:var(--mark-err);
-}
+.cs-block:hover { background:var(--mark-err); color:var(--mark-err); }
 
-/* ── stats panel ── */
 #stats-panel {
   position:fixed; inset:0; background:var(--paper); z-index:190;
   display:none; flex-direction:column; font-family:'IBM Plex Mono',monospace;
@@ -90,7 +65,6 @@ const P2_CSS = `
 .sp-name-row { display:flex; justify-content:space-between; margin-bottom:6px; font-size:11px; }
 .sp-name-count { color:var(--ink-faint); }
 
-/* ── terminal ── */
 #p2-terminal {
   position:fixed; inset:0; background:rgba(0,0,0,.88);
   z-index:300; display:none; align-items:center; justify-content:center;
@@ -136,7 +110,6 @@ const P2_CSS = `
   color:#d4cfc6; font-family:'IBM Plex Mono',monospace; font-size:13px;
   caret-color:#d4cfc6;
 }
-
 #trm-trigger {
   background:transparent; border:1px solid var(--ink-ghost);
   color:var(--ink-faint); font-family:'IBM Plex Mono',monospace;
@@ -146,37 +119,22 @@ const P2_CSS = `
 }
 #trm-trigger:hover, #trm-trigger:active { background:var(--ink-ghost); color:var(--ink); }
 
-/* ── edited badge ── */
 .edited-badge {
   font-size:9px; color:var(--ink-faint); letter-spacing:1px;
   border:1px solid var(--ink-ghost); padding:1px 5px;
   margin-left:8px; vertical-align:middle; text-transform:uppercase;
 }
 
-/* ── encrypting flash overlay ── */
 #enc-flash-ov {
-  position:fixed; inset:0; z-index:9999;
-  background:var(--paper);
-  display:flex; flex-direction:column;
-  align-items:center; justify-content:center;
-  gap:18px; pointer-events:none;
-  font-family:'IBM Plex Mono',monospace;
+  position:fixed; inset:0; z-index:9999; background:var(--paper);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:18px; pointer-events:none; font-family:'IBM Plex Mono',monospace;
 }
-#enc-flash-ov .ef-glyph {
-  font-family:'VT323',monospace;
-  font-size:80px; line-height:1;
-  color:var(--ink-ghost); letter-spacing:4px;
-}
-#enc-flash-ov .ef-label {
-  font-size:11px; letter-spacing:4px;
-  text-transform:uppercase; color:var(--ink-soft);
-}
-#enc-flash-ov .ef-bar {
-  font-size:11px; color:var(--ink-faint); letter-spacing:1px;
-  width:200px; text-align:center;
-}
+#enc-flash-ov .ef-glyph { font-family:'VT323',monospace; font-size:80px; line-height:1; color:var(--ink-ghost); letter-spacing:4px; }
+#enc-flash-ov .ef-label { font-size:11px; letter-spacing:4px; text-transform:uppercase; color:var(--ink-soft); }
+#enc-flash-ov .ef-bar   { font-size:11px; color:var(--ink-faint); letter-spacing:1px; width:200px; text-align:center; }
 
-/* ── edit modal overlay ── */
+/* ── edit modal ── */
 #p2-edit-modal {
   position:fixed; inset:0; background:rgba(0,0,0,.85);
   z-index:350; display:none; align-items:center; justify-content:center;
@@ -192,8 +150,7 @@ const P2_CSS = `
 .p2em-titlebar {
   background:var(--ink); color:var(--paper);
   padding:5px 12px; font-size:11px; letter-spacing:1px;
-  display:flex; align-items:center; justify-content:space-between;
-  flex-shrink:0;
+  display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
 }
 .p2em-close {
   background:none; border:1px solid rgba(255,255,255,.2); cursor:pointer;
@@ -207,17 +164,13 @@ const P2_CSS = `
   align-items:center; flex-shrink:0;
 }
 .p2em-field { display:flex; flex-direction:column; gap:4px; }
-.p2em-label {
-  font-size:9px; letter-spacing:2px; color:var(--ink-faint);
-  text-transform:uppercase;
-}
+.p2em-label { font-size:9px; letter-spacing:2px; color:var(--ink-faint); text-transform:uppercase; }
 .p2em-label::before { content:'// '; color:var(--ink-ghost); }
 .p2em-input {
   background:var(--paper); border:1px solid var(--rule-dark);
-  border-bottom:2px solid var(--ink-soft);
-  color:var(--ink); font-family:'IBM Plex Mono',monospace;
-  font-size:12px; padding:5px 8px; outline:none;
-  border-radius:0; -webkit-appearance:none;
+  border-bottom:2px solid var(--ink-soft); color:var(--ink);
+  font-family:'IBM Plex Mono',monospace; font-size:12px;
+  padding:5px 8px; outline:none; border-radius:0; -webkit-appearance:none;
 }
 .p2em-input:focus { border-bottom-color:var(--ink); }
 .p2em-flair-row { display:flex; gap:5px; flex-wrap:wrap; }
@@ -232,18 +185,23 @@ const P2_CSS = `
 .p2em-fr:checked + label { background:var(--ink); color:var(--paper); border-color:var(--ink); }
 .p2em-hint {
   font-size:9px; color:var(--ink-ghost); letter-spacing:1px;
-  padding:5px 16px; border-bottom:1px solid var(--rule); background:var(--paper-dim);
-  flex-shrink:0;
+  padding:5px 16px; border-bottom:1px solid var(--rule);
+  background:var(--paper-dim); flex-shrink:0;
 }
 .p2em-hint code { color:var(--ink-faint); }
 #p2em-content {
   flex:1; resize:none; background:var(--paper);
-  border:none; border-left:3px solid var(--rule-dark);
-  color:var(--ink); font-family:'IBM Plex Mono',monospace;
-  font-size:13px; line-height:1.75; padding:20px 24px;
-  outline:none; font-style:italic; tab-size:2;
+  border:none; border-left:3px solid var(--rule-dark); color:var(--ink);
+  font-family:'IBM Plex Mono',monospace; font-size:13px;
+  line-height:1.75; padding:20px 24px; outline:none;
+  font-style:italic; tab-size:2;
 }
 #p2em-content:focus { border-left-color:var(--ink-soft); font-style:normal; }
+.p2em-loading {
+  flex:1; display:flex; align-items:center; justify-content:center;
+  font-size:11px; letter-spacing:2px; color:var(--ink-faint);
+  text-transform:uppercase;
+}
 .p2em-footer {
   padding:8px 16px; border-top:1px solid var(--rule-dark);
   background:var(--paper-dim); display:flex; gap:8px;
@@ -252,8 +210,7 @@ const P2_CSS = `
 .p2em-btn {
   font-family:'IBM Plex Mono',monospace; font-size:11px;
   letter-spacing:1px; padding:6px 14px; cursor:pointer;
-  border:1px solid var(--rule-dark); text-transform:uppercase;
-  transition:all .15s;
+  border:1px solid var(--rule-dark); text-transform:uppercase; transition:all .15s;
 }
 .p2em-btn-cancel { background:transparent; color:var(--ink-soft); }
 .p2em-btn-cancel:hover { background:var(--paper-mid); }
@@ -275,6 +232,113 @@ const P2_CSS = `
 })();
 
 /* ════════════════════════════════════════════
+   LOCAL CRYPTO HELPERS
+   (mirrors the HTML's crypto — needed to
+   encrypt/decrypt individual <cs> payloads)
+════════════════════════════════════════════ */
+const _enc = new TextEncoder();
+const _dec = new TextDecoder();
+const _b64   = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const _unb64 = s   => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function _p2DeriveKey(pw, salt) {
+  const km = await crypto.subtle.importKey('raw', _enc.encode(pw), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations:100000, hash:'SHA-256' },
+    km,
+    { name:'AES-GCM', length:256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+
+async function _p2EncStr(text, pw) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await _p2DeriveKey(pw, salt);
+  const ct   = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, _enc.encode(text));
+  return { salt: _b64(salt), iv: _b64(iv), data: _b64(ct) };
+}
+
+async function _p2DecStr(obj, pw) {
+  const key = await _p2DeriveKey(pw, _unb64(obj.salt));
+  const pt  = await crypto.subtle.decrypt(
+    { name:'AES-GCM', iv: _unb64(obj.iv) },
+    key,
+    _unb64(obj.data)
+  );
+  return _dec.decode(pt);
+}
+
+/* ════════════════════════════════════════════
+   CS ENCRYPTION LAYER
+   Format stored in DB:
+     <cs>ENC:base64(json)</cs>
+   where json = {salt, iv, data} from AES-GCM
+   on the plaintext name.
+
+   Plain <cs>name</cs> (un-encrypted) is still
+   supported for display — both show as ████.
+════════════════════════════════════════════ */
+const CS_ENC_PREFIX = 'ENC:';
+
+/** Encrypt a single name for storage inside a <cs> tag */
+async function encryptCSName(name, pw) {
+  const obj     = await _p2EncStr(name, pw);
+  const payload = btoa(JSON.stringify(obj));
+  return CS_ENC_PREFIX + payload;
+}
+
+/** Decrypt a stored ENC:... value back to the plaintext name */
+async function decryptCSName(encoded, pw) {
+  if (!encoded.startsWith(CS_ENC_PREFIX)) return encoded; // plain fallback
+  const obj = JSON.parse(atob(encoded.slice(CS_ENC_PREFIX.length)));
+  return _p2DecStr(obj, pw);
+}
+
+/**
+ * Process content for SAVING:
+ *   <cs>name</cs>        → <cs>ENC:base64</cs>   (plain → encrypted)
+ *   <cs>ENC:base64</cs>  → unchanged              (already encrypted)
+ */
+async function processCSForSave(content, pw) {
+  if (!content.includes('<cs>')) return content;
+  const parts = content.split(/(<cs>[\s\S]*?<\/cs>)/gi);
+  const out   = await Promise.all(parts.map(async part => {
+    const m = part.match(/^<cs>([\s\S]*?)<\/cs>$/i);
+    if (!m) return part;
+    const inner = m[1];
+    if (inner.startsWith(CS_ENC_PREFIX)) return part; // already encrypted
+    const enc = await encryptCSName(inner, pw);
+    return `<cs>${enc}</cs>`;
+  }));
+  return out.join('');
+}
+
+/**
+ * Process content for EDITING:
+ *   <cs>ENC:base64</cs>  → <cs>name</cs>   (decrypt so user can edit)
+ *   <cs>name</cs>        → unchanged
+ */
+async function processCSForEdit(content, pw) {
+  if (!content.includes('<cs>')) return content;
+  const parts = content.split(/(<cs>[\s\S]*?<\/cs>)/gi);
+  const out   = await Promise.all(parts.map(async part => {
+    const m = part.match(/^<cs>([\s\S]*?)<\/cs>$/i);
+    if (!m) return part;
+    const inner = m[1];
+    if (!inner.startsWith(CS_ENC_PREFIX)) return part; // plain text already
+    try {
+      const name = await decryptCSName(inner, pw);
+      return `<cs>${name}</cs>`;
+    } catch {
+      return part; // decrypt failed — leave as-is
+    }
+  }));
+  return out.join('');
+}
+
+/* ════════════════════════════════════════════
    HELPERS
 ════════════════════════════════════════════ */
 const $p = id => document.getElementById(id);
@@ -292,10 +356,8 @@ function waitFor(fn, ms = 60, limit = 60) {
 
 function escHtml(s) {
   return String(s)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function escReg(s) { return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
 
@@ -330,7 +392,7 @@ function colorizeNames(text, freq) {
     else if (count >= 2) cls = 'nh-low';
     else continue;
     const cap = name[0].toUpperCase() + name.slice(1);
-    const re = new RegExp(`(?<![a-zA-Z])(${escReg(cap)})(?![a-zA-Z])`, 'g');
+    const re  = new RegExp(`(?<![a-zA-Z])(${escReg(cap)})(?![a-zA-Z])`, 'g');
     result = result.replace(re, `<span class="${cls}" title="${count}×">$1</span>`);
   }
   return result;
@@ -338,41 +400,47 @@ function colorizeNames(text, freq) {
 
 /* ════════════════════════════════════════════
    CENSORING SYSTEM
+   Handles both:
+     <cs>plainname</cs>      (legacy / during editing preview)
+     <cs>ENC:base64</cs>     (stored encrypted form)
+   Both render as ████ in viewer.
 ════════════════════════════════════════════ */
 const censorMap = new Map();
+
+// Matches any <cs>…</cs> block, encrypted or plain
 const CS_RE = /(<cs>[\s\S]*?<\/cs>)/gi;
 
 function splitCensored(content) {
   return content.split(CS_RE).map(part => {
     const m = part.match(/^<cs>([\s\S]*?)<\/cs>$/i);
-    return m ? { type:'censored', name: m[1] } : { type:'plain', text: part };
+    if (!m) return { type:'plain', text: part };
+    const inner = m[1];
+    // Both encrypted and plain forms are "censored" — display as ████
+    return { type:'censored', raw: inner, isEncrypted: inner.startsWith(CS_ENC_PREFIX) };
   });
 }
 
 function renderContentHTML(content, entryId) {
-  const parts = splitCensored(content);
-  const names = [];
-  parts.forEach(p => { if (p.type === 'censored' && !names.includes(p.name)) names.push(p.name); });
+  const parts    = splitCensored(content);
   const plainOnly = parts.filter(p => p.type === 'plain').map(p => p.text).join(' ');
-  const freq = extractProperNames(plainOnly);
+  const freq      = extractProperNames(plainOnly);
+
   const html = parts.map(p => {
     if (p.type === 'censored') {
-      return `<span class="cs-block" title="[censored — use /uncensor in terminal]" data-cs="${escHtml(p.name)}">████</span>`;
+      const tip = p.isEncrypted
+        ? '[encrypted name — use /uncensor in terminal]'
+        : '[censored — use /uncensor in terminal]';
+      return `<span class="cs-block" title="${tip}" data-cs-enc="${p.isEncrypted ? '1':'0'}">████</span>`;
     }
     return colorizeNames(p.text, freq);
   }).join('');
-  if (names.length) censorMap.set(entryId, names);
-  else censorMap.delete(entryId);
-  return html;
-}
 
-function uncensoredContentHTML(content) {
-  return splitCensored(content).map(p => {
-    if (p.type === 'censored') {
-      return `<span style="background:#c9b8f022;color:#c9b8f0;padding:0 2px;border-bottom:1px solid #c9b8f088">${escHtml(p.name)}</span>`;
-    }
-    return escHtml(p.text);
-  }).join('');
+  // Track whether entry has any censored blocks
+  const hasCensored = parts.some(p => p.type === 'censored');
+  if (hasCensored) censorMap.set(entryId, true);
+  else censorMap.delete(entryId);
+
+  return html;
 }
 
 /* ════════════════════════════════════════════
@@ -410,8 +478,7 @@ function watchForDecryptedContent() {
 }
 
 /* ════════════════════════════════════════════
-   ENCRYPTING FLASH ANIMATION
-   Shown on: wrong passphrase (then locks) or ESC
+   ENCRYPTING FLASH + REAL LOCK
 ════════════════════════════════════════════ */
 const GC_CHARS = '░▒▓▄▀■□-~*+=#@&%?!./|:;ABCDEFGHJKMNPQRSTUVXYZabcdefghjkmnpqrstuvxyz0123456789';
 function randGC() { return GC_CHARS[Math.floor(Math.random() * GC_CHARS.length)]; }
@@ -427,32 +494,21 @@ function showEncryptingFlash(thenLock = false) {
     });
   }
   document.querySelectorAll('#entry-list .ec-title:not(.enc)').forEach(el => {
-    const len = el.textContent.length;
-    el.textContent = Array.from({length: len}, randGC).join('');
+    el.textContent = Array.from({length: el.textContent.length}, randGC).join('');
   });
 
   $p('enc-flash-ov')?.remove();
-  const ov = document.createElement('div');
-  ov.id = 'enc-flash-ov';
-  const glyph = document.createElement('div');
-  glyph.className = 'ef-glyph';
-  glyph.textContent = '▓';
-  const label = document.createElement('div');
-  label.className = 'ef-label';
-  label.textContent = 'ENCRYPTING...';
-  const bar = document.createElement('div');
-  bar.className = 'ef-bar';
+  const ov    = document.createElement('div'); ov.id = 'enc-flash-ov';
+  const glyph = document.createElement('div'); glyph.className = 'ef-glyph'; glyph.textContent = '▓';
+  const label = document.createElement('div'); label.className = 'ef-label'; label.textContent = 'ENCRYPTING...';
+  const bar   = document.createElement('div'); bar.className = 'ef-bar';
   ov.append(glyph, label, bar);
   document.body.appendChild(ov);
 
-  let frame = 0;
-  const LABEL = 'ENCRYPTING...';
-  const STEPS = 20;
-  let step = 0;
+  let frame = 0, step = 0;
+  const LABEL = 'ENCRYPTING...', STEPS = 20;
   const iv = setInterval(() => {
-    label.textContent = frame % 4 < 2
-      ? LABEL
-      : Array.from(LABEL, ch => ch === '.' ? '.' : randGC()).join('');
+    label.textContent = frame % 4 < 2 ? LABEL : Array.from(LABEL, ch => ch === '.' ? '.' : randGC()).join('');
     step = Math.min(step + 1, STEPS);
     const filled = Math.round((step / STEPS) * 16);
     bar.textContent = '[' + '█'.repeat(filled) + '░'.repeat(16 - filled) + ']';
@@ -467,31 +523,23 @@ function showEncryptingFlash(thenLock = false) {
     ov.style.opacity = '0';
     setTimeout(() => {
       ov.remove();
-      // After animation completes, actually lock if requested
-      if (thenLock && window.S?.unlocked) {
-        window.lock?.();
-      }
+      if (thenLock && window.S?.unlocked) window.lock?.();
     }, 350);
   }, 750);
 }
 
-/** Hook: wrong passphrase → flash animation THEN fully lock */
 function hookWrongPassword() {
   const pwInp = $p('pw-input');
   if (!pwInp) return;
   new MutationObserver(() => {
-    if (pwInp.classList.contains('shake')) {
-      // thenLock=true: animation completes then calls window.lock()
-      showEncryptingFlash(true);
-    }
-  }).observe(pwInp, { attributes: true, attributeFilter: ['class'] });
+    if (pwInp.classList.contains('shake')) showEncryptingFlash(true);
+  }).observe(pwInp, { attributes:true, attributeFilter:['class'] });
 }
 
-/** Hook: ESC while unlocked → same full lock flow */
 function hookEscLock() {
   document.addEventListener('keydown', e => {
     if (e.target.id === 'pw-input' && e.key === 'Escape' && window.S?.unlocked) {
-      showEncryptingFlash(false); // main script's ESC handler calls lock() directly
+      showEncryptingFlash(false);
     }
   }, true);
 }
@@ -503,19 +551,12 @@ function hookCloseButton() {
   const closeBtn = document.querySelector('.tb-btn[title="close"]');
   if (!closeBtn) return;
   closeBtn.addEventListener('click', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Try window.close() first (works if opened via link/script)
+    e.preventDefault(); e.stopPropagation();
     window.close();
-    // Fallback 1: go back in history stack
     setTimeout(() => {
       if (!window.closed) {
-        if (window.history.length > 1) {
-          window.history.back();
-        } else {
-          // Fallback 2: navigate away to blank
-          window.location.replace('about:blank');
-        }
+        if (window.history.length > 1) window.history.back();
+        else window.location.replace('about:blank');
       }
     }, 100);
   });
@@ -539,19 +580,17 @@ function buildStatsPanel() {
 
 function openStats() {
   const S = window.S;
-  if (!S) { console.warn('[patch2] window.S missing'); return; }
+  if (!S) return;
   if (!S.unlocked) { window.notify?.('Unlock journal first.', 'err'); return; }
 
-  const entries = S.entries;
-  const total   = entries.length;
+  const entries = S.entries, total = entries.length;
   const cached  = [...S.cache.values()];
-
   const flairCounts = { no_record:0, vague:0, vivid:0, lucid:0, astral:0 };
   entries.forEach(e => { if (flairCounts[e.flair] !== undefined) flairCounts[e.flair]++; });
   const maxFlair = Math.max(...Object.values(flairCounts), 1);
 
   const totalWords = cached.reduce((s,c) => s + c.content.replace(/<cs>[\s\S]*?<\/cs>/gi,'').split(/\s+/).filter(Boolean).length, 0);
-  const avgWords = total ? Math.round(totalWords / total) : 0;
+  const avgWords   = total ? Math.round(totalWords / total) : 0;
 
   const monthMap = {};
   entries.forEach(e => { const m = e.date.slice(0,7); monthMap[m] = (monthMap[m]||0)+1; });
@@ -561,21 +600,17 @@ function openStats() {
   let streak = 0, d = new Date();
   while (true) { const ds = d.toISOString().split('T')[0]; if (days.has(ds)) { streak++; d.setDate(d.getDate()-1); } else break; }
 
-  const allText = cached.map(c => c.content.replace(/<cs>[\s\S]*?<\/cs>/gi, '')).join(' ');
+  const allText  = cached.map(c => c.content.replace(/<cs>[\s\S]*?<\/cs>/gi,'')).join(' ');
   const nameFreq = extractProperNames(allText);
   const topNames = Object.entries(nameFreq).sort((a,b) => b[1]-a[1]).slice(0,8);
 
   const hours = Array(24).fill(0);
   entries.forEach(e => { if (e.time) { const h = parseInt(e.time.split(':')[0]); if (!isNaN(h)) hours[h]++; } });
-  const peakHour = hours.indexOf(Math.max(...hours));
+  const peakHour  = hours.indexOf(Math.max(...hours));
   const peakLabel = peakHour===0?'12 AM':peakHour<12?`${peakHour} AM`:peakHour===12?'12 PM':`${peakHour-12} PM`;
 
-  const censoredCount = entries.filter(e => {
-    const c = S.cache.get(e.id);
-    const has = c && CS_RE.test(c.content);
-    CS_RE.lastIndex = 0;
-    return has;
-  }).length;
+  const CS_RE2 = /<cs>[\s\S]*?<\/cs>/gi;
+  const censoredCount = entries.filter(e => { const c = S.cache.get(e.id); return c && CS_RE2.test(c.content); }).length;
 
   $p('sp-body').innerHTML = `
     <div class="sp-card">
@@ -610,7 +645,7 @@ function openStats() {
     <div class="sp-card">
       <div class="sp-card-title">Entries / Month</div>
       ${months.length ? months.map(m => {
-        const maxM = Math.max(...months.map(mm => monthMap[mm]),1);
+        const maxM = Math.max(...months.map(mm=>monthMap[mm]),1);
         return `<div class="sp-bar-row">
           <span class="sp-bar-lbl" style="width:56px">${m.slice(5)}</span>
           <div class="sp-bar-track"><div class="sp-bar-fill" style="width:${Math.round(monthMap[m]/maxM*100)}%"></div></div>
@@ -621,7 +656,7 @@ function openStats() {
       <div class="sp-card-title">Recurring Names</div>
       ${topNames.length ? topNames.map(([n,c]) => {
         const cls = c>=6?'nh-high':c>=3?'nh-mid':'nh-low';
-        return `<div class="sp-name-row"><span class="sp-name-word ${cls}">${n[0].toUpperCase()+n.slice(1)}</span><span class="sp-name-count">${c}×</span></div>`;
+        return `<div class="sp-name-row"><span class="${cls}">${n[0].toUpperCase()+n.slice(1)}</span><span class="sp-name-count">${c}×</span></div>`;
       }).join('') : '<span style="color:var(--ink-ghost);font-size:11px">Unlock entries to scan</span>'}
     </div>`;
 
@@ -640,18 +675,16 @@ function injectStatsButton() {
 }
 
 /* ════════════════════════════════════════════
-   TERMINAL — LOADING BAR HELPER
+   TERMINAL — LOADING BAR
 ════════════════════════════════════════════ */
 async function trmProgressBar(label, total, msPerStep = 38) {
-  const BARS = 18;
-  const out  = $p('trm-output');
+  const BARS = 18, out = $p('trm-output');
   const line = document.createElement('div');
   line.className = 'trm-bar';
   out.appendChild(line);
   for (let i = 0; i <= total; i++) {
-    const pct    = Math.round((i / total) * 100);
-    const filled = Math.round((i / total) * BARS);
-    line.textContent = `${label}: [${'█'.repeat(filled)}${'░'.repeat(BARS - filled)}] ${pct}%`;
+    const filled = Math.round((i/total)*BARS);
+    line.textContent = `${label}: [${'█'.repeat(filled)}${'░'.repeat(BARS-filled)}] ${Math.round((i/total)*100)}%`;
     out.scrollTop = out.scrollHeight;
     if (i < total) await new Promise(r => setTimeout(r, msPerStep));
   }
@@ -662,10 +695,9 @@ async function trmProgressBar(label, total, msPerStep = 38) {
 ════════════════════════════════════════════ */
 const TRM_USER = 'der_anfang';
 const TRM_PASS = 'anfangistende';
-let trmState    = { authed:false, history:[], histIdx:-1 };
+let trmState     = { authed:false, history:[], histIdx:-1 };
 let trmLoginStep = 0;
 let _pendingUser = '';
-let _editCtx     = null;
 let _deleteCtx   = null;
 
 function buildTerminal() {
@@ -691,32 +723,28 @@ function buildTerminal() {
 }
 
 function trmPrint(text = '', cls = '') {
-  const out = $p('trm-output');
-  const line = document.createElement('div');
+  const out = $p('trm-output'), line = document.createElement('div');
   if (cls) line.className = cls;
   line.textContent = text;
-  out.appendChild(line);
-  out.scrollTop = out.scrollHeight;
+  out.appendChild(line); out.scrollTop = out.scrollHeight;
 }
 function trmPrintHTML(html, cls = '') {
-  const out = $p('trm-output');
-  const line = document.createElement('div');
+  const out = $p('trm-output'), line = document.createElement('div');
   if (cls) line.className = cls;
   line.innerHTML = html;
-  out.appendChild(line);
-  out.scrollTop = out.scrollHeight;
+  out.appendChild(line); out.scrollTop = out.scrollHeight;
 }
 function trmClear() { if ($p('trm-output')) $p('trm-output').innerHTML = ''; }
 
 function openTerminal() {
   if (!$p('p2-terminal')) buildTerminal();
   trmState.authed = false; trmState.history = []; trmState.histIdx = -1;
-  trmLoginStep = 0; _pendingUser = ''; _editCtx = null; _deleteCtx = null;
+  trmLoginStep = 0; _pendingUser = ''; _deleteCtx = null;
   trmClear();
   $p('trm-prompt').textContent = 'login:~$';
   $p('trm-input').type = 'text';
   $p('trm-input').value = '';
-  const inp = $p('trm-input');
+  const inp    = $p('trm-input');
   const newInp = inp.cloneNode(true);
   inp.parentNode.replaceChild(newInp, inp);
   newInp.addEventListener('keydown', onTrmKey);
@@ -753,8 +781,7 @@ function handleLogin(val) {
     trmPrint('Username: ' + val, 'trm-dim');
     _pendingUser = val; trmLoginStep = 1;
     $p('trm-input').type = 'password';
-    trmPrint('Password:');
-    return;
+    trmPrint('Password:'); return;
   }
   trmPrint('Password: ••••••••', 'trm-dim');
   $p('trm-input').type = 'text';
@@ -772,14 +799,14 @@ function handleLogin(val) {
 function handleCommand(raw) {
   const [cmd, ...args] = raw.trim().split(/\s+/);
   switch (cmd.toLowerCase()) {
-    case '/help':     cmdHelp(); break;
-    case '/list':     cmdList(); break;
-    case '/edit':     cmdEdit(args); break;
-    case '/delete':   cmdDelete(args); break;
-    case '/stats':    cmdStatsTrm(); break;
-    case '/uncensor': cmdUncensor(args); break;
-    case '/clear':    trmClear(); break;
-    case '/exit':     closeTerminal(); break;
+    case '/help':     cmdHelp();        break;
+    case '/list':     cmdList();        break;
+    case '/edit':     cmdEdit(args);    break;
+    case '/delete':   cmdDelete(args);  break;
+    case '/stats':    cmdStatsTrm();    break;
+    case '/uncensor': cmdUncensor(args);break;
+    case '/clear':    trmClear();       break;
+    case '/exit':     closeTerminal();  break;
     case '':          break;
     default: trmPrint(`Unknown command: ${cmd}  —  type /help`, 'trm-err');
   }
@@ -791,10 +818,10 @@ function cmdHelp() {
   trmPrint('──────────────────────────────────────────────────', 'trm-dim');
   [
     ['/list',                    '    list all entries'],
-    ['/edit YYYY-MM-DD',         '    edit an entry by date (opens editor)'],
+    ['/edit YYYY-MM-DD',         '    edit an entry (opens full editor)'],
     ['/delete YYYY-MM-DD',       '    delete an entry by date'],
     ['/stats',                   '    quick stats summary'],
-    ['/uncensor YYYY-MM-DD|all', '    reveal censored <cs> names'],
+    ['/uncensor YYYY-MM-DD|all', '    decrypt and reveal <cs> names'],
     ['/clear',                   '    clear terminal screen'],
     ['/exit',                    '    close terminal'],
   ].forEach(([c,d]) =>
@@ -802,22 +829,23 @@ function cmdHelp() {
   );
   trmPrint('');
   trmPrint('Censoring tip:', 'trm-dim');
-  trmPrint('  Wrap names in <cs>name</cs> when writing — shows as ████ in viewer.', 'trm-dim');
+  trmPrint('  Wrap names in <cs>name</cs> — saved as encrypted blob, shown as ████.', 'trm-dim');
+  trmPrint('  Decrypted only with journal passphrase via /uncensor.', 'trm-dim');
   trmPrint('');
 }
 
 function cmdList() {
   const S = window.S;
-  if (!S) { trmPrint('window.S not available — add exports to HTML.', 'trm-err'); return; }
+  if (!S) { trmPrint('window.S not available.', 'trm-err'); return; }
   if (!S.entries.length) { trmPrint('No entries found.', 'trm-warn'); return; }
   trmPrint('');
   trmPrint('DATE        TIME   FLAIR        REDACTED  TITLE', 'trm-head');
   trmPrint('────────────────────────────────────────────────────', 'trm-dim');
+  const CS_RE2 = /<cs>[\s\S]*?<\/cs>/gi;
   S.entries.forEach(e => {
-    const cached  = S.cache.get(e.id);
-    const title   = cached?.title || '[encrypted]';
-    const hasCS   = cached?.content && CS_RE.test(cached.content) ? '  ██ ' : '      ';
-    CS_RE.lastIndex = 0;
+    const cached = S.cache.get(e.id);
+    const title  = cached?.title || '[encrypted]';
+    const hasCS  = cached?.content && CS_RE2.test(cached.content) ? '  ██ ' : '      ';
     trmPrint(`${e.date}  ${(e.time||'--:--').padEnd(7)}${e.flair.padEnd(13)}${hasCS}${title}`);
   });
   trmPrint('');
@@ -825,27 +853,23 @@ function cmdList() {
 
 function cmdStatsTrm() {
   const S = window.S;
-  if (!S) { trmPrint('window.S not available — add exports to HTML.', 'trm-err'); return; }
+  if (!S) { trmPrint('window.S not available.', 'trm-err'); return; }
   const total = S.entries.length;
-  const flairCounts = {};
-  S.entries.forEach(e => { flairCounts[e.flair] = (flairCounts[e.flair]||0)+1; });
-  const censored = S.entries.filter(e => {
-    const c = S.cache.get(e.id);
-    const has = c && CS_RE.test(c.content);
-    CS_RE.lastIndex = 0;
-    return has;
-  }).length;
+  const fc    = {};
+  S.entries.forEach(e => { fc[e.flair] = (fc[e.flair]||0)+1; });
+  const CS_RE2 = /<cs>[\s\S]*?<\/cs>/gi;
+  const cens   = S.entries.filter(e => { const c = S.cache.get(e.id); return c && CS_RE2.test(c.content); }).length;
   trmPrint('');
   trmPrint(`Total entries : ${total}`, 'trm-ok');
-  Object.entries(flairCounts).forEach(([k,v]) => trmPrint(`  ${k.padEnd(14)}: ${v}`));
-  trmPrint(`  ${'redacted'.padEnd(14)}: ${censored} (use /uncensor to view)`, 'trm-warn');
+  Object.entries(fc).forEach(([k,v]) => trmPrint(`  ${k.padEnd(14)}: ${v}`));
+  trmPrint(`  ${'redacted'.padEnd(14)}: ${cens} (use /uncensor to view)`, 'trm-warn');
   trmPrint('');
 }
 
-/* ── /uncensor ── */
+/* ── /uncensor  — decrypts ENC: blobs then displays ── */
 async function cmdUncensor(args) {
   const S = window.S;
-  if (!S) { trmPrint('window.S not available — add exports to HTML.', 'trm-err'); return; }
+  if (!S) { trmPrint('window.S not available.', 'trm-err'); return; }
   if (!S.unlocked) { trmPrint('Journal must be unlocked to uncensor.', 'trm-err'); return; }
 
   const target = (args[0] || '').toLowerCase();
@@ -855,6 +879,7 @@ async function cmdUncensor(args) {
     return;
   }
 
+  const CS_RE2 = /<cs>[\s\S]*?<\/cs>/gi;
   let pool;
   if (target === 'all') {
     pool = S.entries.filter(e => S.cache.has(e.id));
@@ -866,47 +891,51 @@ async function cmdUncensor(args) {
 
   const censored = pool.filter(e => {
     const c = S.cache.get(e.id);
-    const has = c && CS_RE.test(c.content);
-    CS_RE.lastIndex = 0;
-    return has;
+    return c && CS_RE2.test(c.content);
   });
 
   if (!censored.length) {
-    trmPrint(`No censored content found${target === 'all' ? '' : ' for ' + target}.`, 'trm-warn');
-    trmPrint('(Use <cs>name</cs> when writing entries to censor names.)', 'trm-dim');
+    trmPrint(`No censored content found${target==='all'?'':' for '+target}.`, 'trm-warn');
     return;
   }
 
   trmPrint('');
-  trmPrint(`Uncensoring ${censored.length} entr${censored.length > 1 ? 'ies' : 'y'}...`, 'trm-warn');
+  trmPrint(`Decrypting ${censored.length} entr${censored.length>1?'ies':'y'}...`, 'trm-warn');
   await trmProgressBar('Decrypting', censored.length * 6, 32);
   trmPrint('');
   trmPrint('─ UNCENSORED OUTPUT ─────────────────────────────', 'trm-head');
-  trmPrintHTML(`  <span style="color:#c9b8f0">purple highlight</span> = revealed name`);
+  trmPrintHTML(`  <span style="color:#c9b8f0">purple</span> = decrypted name &nbsp;·&nbsp; terminal-only, not saved`);
   trmPrint('');
 
   for (const e of censored) {
     const c = S.cache.get(e.id);
     if (!c) continue;
-    trmPrintHTML(
-      `<span class="trm-head">── ${escHtml(e.date)}</span>` +
-      `<span class="trm-dim">  ${escHtml(e.flair)}</span>`
-    );
+
+    trmPrintHTML(`<span class="trm-head">── ${escHtml(e.date)}</span><span class="trm-dim">  ${escHtml(e.flair)}</span>`);
     trmPrint(`   ${c.title}`);
     trmPrint('');
-    trmPrintHTML(
-      `<div style="color:#7a7268;font-size:11px;line-height:1.9;padding-left:4px">${uncensoredContentHTML(c.content)}</div>`
-    );
-    const names = [];
-    let m;
-    const re = /<cs>([\s\S]*?)<\/cs>/gi;
-    while ((m = re.exec(c.content)) !== null) {
-      if (!names.includes(m[1])) names.push(m[1]);
-    }
+
+    // Build display with decrypted names
+    const parts  = splitCensored(c.content);
+    const names  = [];
+    const htmlParts = await Promise.all(parts.map(async p => {
+      if (p.type !== 'censored') return escHtml(p.text);
+      let name;
+      try {
+        name = await decryptCSName(p.raw, S.pw);
+      } catch {
+        name = '[decrypt failed]';
+      }
+      if (!names.includes(name)) names.push(name);
+      return `<span style="background:#c9b8f022;color:#c9b8f0;padding:0 2px;border-bottom:1px solid #c9b8f088">${escHtml(name)}</span>`;
+    }));
+
+    trmPrintHTML(`<div style="color:#7a7268;font-size:11px;line-height:1.9;padding-left:4px">${htmlParts.join('')}</div>`);
+
     if (names.length) {
       trmPrint('');
       trmPrintHTML(
-        `<span class="trm-dim">   censored names: </span>` +
+        `<span class="trm-dim">   revealed names: </span>` +
         names.map(n => `<span style="color:#c9b8f0">${escHtml(n)}</span>`).join('<span class="trm-dim">, </span>')
       );
     }
@@ -915,15 +944,77 @@ async function cmdUncensor(args) {
     trmPrint('');
   }
 
-  trmPrint(`Done. ${censored.length} entr${censored.length > 1 ? 'ies' : 'y'} uncensored.`, 'trm-ok');
-  trmPrint('(This output is terminal-only and not saved.)', 'trm-dim');
+  trmPrint(`Done. ${censored.length} entr${censored.length>1?'ies':'y'} decrypted.`, 'trm-ok');
+  trmPrint('(Visible here only — names re-encrypt on any save.)', 'trm-dim');
   trmPrint('');
 }
 
+/* ── /edit — opens full modal editor ── */
+function cmdEdit(args) {
+  const S = window.S;
+  if (!S) { trmPrint('window.S not available.', 'trm-err'); return; }
+  if (!S.unlocked) { trmPrint('Journal is locked. Unlock it first.', 'trm-err'); return; }
+  if (!args[0]) { trmPrint('Usage: /edit YYYY-MM-DD', 'trm-warn'); return; }
+  const entry = S.entries.find(e => e.date === args[0]);
+  if (!entry) { trmPrint(`No entry found for ${args[0]}.`, 'trm-err'); return; }
+  const cached = S.cache.get(entry.id);
+  if (!cached) { trmPrint('Entry not decrypted. Unlock first.', 'trm-err'); return; }
+  trmPrint('');
+  trmPrint(`Opening editor for ${args[0]} — ${cached.title}`, 'trm-ok');
+  trmPrint('(Editor opens above — <cs> names are decrypted for editing)', 'trm-dim');
+  trmPrint('');
+  openEditModal(entry, cached);
+}
+
+/* ── /delete ── */
+function cmdDelete(args) {
+  const S = window.S;
+  if (!S) { trmPrint('window.S not available.', 'trm-err'); return; }
+  if (!args[0]) { trmPrint('Usage: /delete YYYY-MM-DD', 'trm-warn'); return; }
+  const entry = S.entries.find(e => e.date === args[0]);
+  if (!entry) { trmPrint(`No entry for ${args[0]}.`, 'trm-err'); return; }
+  trmPrint(`Delete entry from ${args[0]}? (yes/no)`, 'trm-warn');
+  _deleteCtx = entry;
+  swapInputHandler(onDeleteKey);
+}
+function onDeleteKey(e) {
+  if (e.key !== 'Enter') return;
+  const inp = $p('trm-input'), val = inp.value.trim().toLowerCase(); inp.value = '';
+  trmPrint('> ' + val, 'trm-dim'); restoreInputHandler();
+  if (val === 'yes' || val === 'y') { window.removeEntry?.(_deleteCtx.id); trmPrint('Deleted.', 'trm-ok'); }
+  else trmPrint('Cancelled.', 'trm-dim');
+  _deleteCtx = null; trmPrint('');
+}
+
+function swapInputHandler(fn) {
+  const inp = $p('trm-input');
+  inp.removeEventListener('keydown', onTrmKey);
+  inp.addEventListener('keydown', fn);
+}
+function restoreInputHandler() {
+  const inp = $p('trm-input');
+  if (!inp) return;
+  inp.removeEventListener('keydown', onDeleteKey);
+  inp.removeEventListener('keydown', onTrmKey);
+  inp.addEventListener('keydown', onTrmKey);
+}
+
+function injectTerminalButton() {
+  if ($p('trm-trigger')) return;
+  const sb  = $p('statusbar'); if (!sb) return;
+  const btn = document.createElement('button');
+  btn.id = 'trm-trigger'; btn.title = 'Open Terminal (Ctrl+`)';
+  btn.textContent = '>_';
+  btn.addEventListener('click', openTerminal);
+  const tt = $p('theme-toggle');
+  tt ? sb.insertBefore(btn, tt) : sb.appendChild(btn);
+}
+
 /* ════════════════════════════════════════════
-   EDIT MODAL  — full-featured overlay editor
-   Opens when /edit is used, pre-filled with
-   existing title, date, time, flair, content
+   EDIT MODAL
+   - Decrypts <cs>ENC:…</cs> → <cs>name</cs>
+     so user edits plain <cs> syntax
+   - On save: processCSForSave re-encrypts them
 ════════════════════════════════════════════ */
 function buildEditModal() {
   if ($p('p2-edit-modal')) return;
@@ -960,54 +1051,60 @@ function buildEditModal() {
         </div>
       </div>
       <div class="p2em-hint">
-        Dream content &nbsp;·&nbsp; wrap names in <code>&lt;cs&gt;name&lt;/cs&gt;</code> to censor &nbsp;·&nbsp; <kbd>Ctrl+Enter</kbd> to save
+        Wrap names in <code>&lt;cs&gt;name&lt;/cs&gt;</code> to encrypt &amp; censor &nbsp;·&nbsp; <kbd>Ctrl+Enter</kbd> to save
       </div>
-      <textarea id="p2em-content" spellcheck="false" autocorrect="off"></textarea>
+      <div id="p2em-body" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
+        <div class="p2em-loading" id="p2em-loading">decrypting censored names…</div>
+        <textarea id="p2em-content" spellcheck="false" autocorrect="off" style="display:none"></textarea>
+      </div>
       <div class="p2em-footer">
         <button class="p2em-btn p2em-btn-cancel" id="p2em-cancel">Cancel</button>
         <button class="p2em-btn p2em-btn-save" id="p2em-save">Encrypt &amp; Save</button>
       </div>
     </div>`;
   document.body.appendChild(el);
-
   $p('p2em-close').onclick  = closeEditModal;
   $p('p2em-cancel').onclick = closeEditModal;
   $p('p2em-save').onclick   = commitEditModal;
   el.addEventListener('click', e => { if (e.target === el) closeEditModal(); });
-
-  // Ctrl+Enter to save
   $p('p2em-content').addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      commitEditModal();
-    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); commitEditModal(); }
   });
 }
 
 let _editModalCtx = null;
 
-function openEditModal(entry, cached) {
+async function openEditModal(entry, cached) {
   buildEditModal();
   _editModalCtx = { entry, cached };
 
   $p('p2em-heading').textContent = `EDIT ENTRY — ${entry.date}`;
-  $p('p2em-title').value   = cached.title;
-  $p('p2em-date').value    = entry.date;
-  $p('p2em-time').value    = entry.time || '';
-  $p('p2em-content').value = cached.content;
+  $p('p2em-title').value = cached.title;
+  $p('p2em-date').value  = entry.date;
+  $p('p2em-time').value  = entry.time || '';
 
-  // Set flair radio
-  const flairRadio = document.querySelector(`.p2em-fr[value="${entry.flair}"]`);
-  if (flairRadio) flairRadio.checked = true;
-  else {
-    const vividRadio = document.querySelector('.p2em-fr[value="vivid"]');
-    if (vividRadio) vividRadio.checked = true;
-  }
+  // Set flair
+  const fr = document.querySelector(`.p2em-fr[value="${entry.flair}"]`);
+  if (fr) fr.checked = true;
+  else { const vv = document.querySelector('.p2em-fr[value="vivid"]'); if (vv) vv.checked = true; }
 
-  $p('p2em-save').textContent = 'Encrypt & Save';
-  $p('p2em-save').disabled = false;
+  // Show loading while we decrypt <cs> blobs
+  $p('p2em-loading').style.display = 'flex';
+  $p('p2em-content').style.display = 'none';
+  $p('p2em-save').disabled = true;
 
   $p('p2-edit-modal').classList.add('show');
+
+  // Decrypt cs blobs to plain <cs>name</cs> for editing
+  const S = window.S;
+  const editableContent = S?.pw
+    ? await processCSForEdit(cached.content, S.pw)
+    : cached.content;
+
+  $p('p2em-content').value = editableContent;
+  $p('p2em-loading').style.display  = 'none';
+  $p('p2em-content').style.display  = 'block';
+  $p('p2em-save').disabled = false;
   setTimeout(() => $p('p2em-content').focus(), 80);
 }
 
@@ -1017,14 +1114,11 @@ function closeEditModal() {
 }
 
 async function commitEditModal() {
-  const ctx = _editModalCtx;
-  if (!ctx) return;
-
-  const S = window.S;
-  if (!S || !window.encStr || !window.saveEntry) {
-    trmPrint('window globals missing — add exports to HTML (see patch2.js header).', 'trm-err');
-    closeEditModal();
-    return;
+  const ctx = _editModalCtx; if (!ctx) return;
+  const S   = window.S;
+  if (!S || !window._origEncStr || !window.saveEntry) {
+    window.notify?.('window globals missing — check patch2 header.', 'err');
+    closeEditModal(); return;
   }
 
   const newTitle   = $p('p2em-title').value.trim();
@@ -1038,34 +1132,30 @@ async function commitEditModal() {
   if (!newDate)    { window.notify?.('Date required.', 'err'); return; }
 
   const saveBtn = $p('p2em-save');
-  saveBtn.textContent = 'Encrypting...';
-  saveBtn.disabled = true;
+  saveBtn.textContent = 'Encrypting…'; saveBtn.disabled = true;
 
   try {
-    const enc_title   = await window.encStr(newTitle,   S.pw);
-    const enc_content = await window.encStr(newContent, S.pw);
+    // Encrypt any <cs> tags before outer encryption
+    const processedContent = await processCSForSave(newContent, S.pw);
+
+    const enc_title   = await window._origEncStr(newTitle,          S.pw);
+    const enc_content = await window._origEncStr(processedContent,  S.pw);
     const edited_at   = new Date().toISOString();
     const updated     = { ...ctx.entry, date:newDate, time:newTime, flair:newFlair, enc_title, enc_content, edited_at };
-    await window.saveEntry(updated);
 
-    // Update in-memory state
+    await window.saveEntry(updated);
     const idx = S.entries.findIndex(e => e.id === ctx.entry.id);
     if (idx >= 0) S.entries[idx] = updated;
     S.entries.sort((a,b) => new Date(b.date) - new Date(a.date));
-    S.cache.set(ctx.entry.id, { title:newTitle, content:newContent });
+    // Cache stores the processed (cs-encrypted) content
+    S.cache.set(ctx.entry.id, { title: newTitle, content: processedContent });
 
     window.renderList?.();
-
-    // Re-render active entry view if open
-    if (S.selId === ctx.entry.id) {
-      const active = document.querySelector('#entry-list .ec.active');
-      active?.click();
-    }
+    if (S.selId === ctx.entry.id) document.querySelector('#entry-list .ec.active')?.click();
 
     window.notify?.('Entry updated.', 'ok');
     closeEditModal();
 
-    // Report back to terminal if it's open
     if ($p('p2-terminal')?.classList.contains('show')) {
       trmPrint('');
       trmPrint(`Updated: ${newDate} — ${newTitle}`, 'trm-ok');
@@ -1075,83 +1165,25 @@ async function commitEditModal() {
   } catch (err) {
     window.notify?.('Encryption failed.', 'err');
     console.error('[patch2] commitEditModal:', err);
-    saveBtn.textContent = 'Encrypt & Save';
-    saveBtn.disabled = false;
+    saveBtn.textContent = 'Encrypt & Save'; saveBtn.disabled = false;
   }
 }
 
-/* ── /edit command — now opens the modal editor ── */
-function cmdEdit(args) {
-  const S = window.S;
-  if (!S) { trmPrint('window.S not available — add exports to HTML.', 'trm-err'); return; }
-  if (!S.unlocked) { trmPrint('Journal is locked. Unlock it first.', 'trm-err'); return; }
-  if (!args[0]) { trmPrint('Usage: /edit YYYY-MM-DD', 'trm-warn'); return; }
+/* ════════════════════════════════════════════
+   WRAP window.encStr
+   Intercepts every save (addEntry + editModal)
+   to encrypt <cs> tags BEFORE the outer AES.
+   Original is stored as window._origEncStr.
+════════════════════════════════════════════ */
+function wrapEncStr() {
+  if (!window.encStr) return;
+  window._origEncStr = window.encStr;
 
-  const entry = S.entries.find(e => e.date === args[0]);
-  if (!entry) { trmPrint(`No entry found for ${args[0]}.`, 'trm-err'); return; }
-
-  const cached = S.cache.get(entry.id);
-  if (!cached) { trmPrint('Entry not decrypted. Unlock the journal first.', 'trm-err'); return; }
-
-  trmPrint('');
-  trmPrint(`Opening editor for ${args[0]} — ${cached.title}`, 'trm-ok');
-  trmPrint('(Full editor opens above the terminal)', 'trm-dim');
-  trmPrint('');
-
-  // Open the full editor modal
-  openEditModal(entry, cached);
-}
-
-/* ── /delete ── */
-function cmdDelete(args) {
-  const S = window.S;
-  if (!S) { trmPrint('window.S not available — add exports to HTML.', 'trm-err'); return; }
-  if (!args[0]) { trmPrint('Usage: /delete YYYY-MM-DD', 'trm-warn'); return; }
-  const entry = S.entries.find(e => e.date === args[0]);
-  if (!entry) { trmPrint(`No entry for ${args[0]}.`, 'trm-err'); return; }
-  trmPrint(`Delete entry from ${args[0]}? (yes/no)`, 'trm-warn');
-  _deleteCtx = entry;
-  swapInputHandler(onDeleteKey);
-}
-
-function onDeleteKey(e) {
-  if (e.key !== 'Enter') return;
-  const inp = $p('trm-input');
-  const val = inp.value.trim().toLowerCase(); inp.value = '';
-  trmPrint('> ' + val, 'trm-dim');
-  restoreInputHandler();
-  if (val === 'yes' || val === 'y') {
-    window.removeEntry?.(_deleteCtx.id);
-    trmPrint('Deleted.', 'trm-ok');
-  } else {
-    trmPrint('Cancelled.', 'trm-dim');
-  }
-  _deleteCtx = null; trmPrint('');
-}
-
-function swapInputHandler(fn) {
-  const inp = $p('trm-input');
-  inp.removeEventListener('keydown', onTrmKey);
-  inp.addEventListener('keydown', fn);
-}
-function restoreInputHandler() {
-  const inp = $p('trm-input');
-  if (!inp) return;
-  inp.removeEventListener('keydown', onDeleteKey);
-  inp.removeEventListener('keydown', onTrmKey);
-  inp.addEventListener('keydown', onTrmKey);
-}
-
-function injectTerminalButton() {
-  if ($p('trm-trigger')) return;
-  const sb = $p('statusbar');
-  if (!sb) return;
-  const btn = document.createElement('button');
-  btn.id = 'trm-trigger'; btn.title = 'Open Terminal (Ctrl+`)';
-  btn.textContent = '>_';
-  btn.addEventListener('click', openTerminal);
-  const tt = $p('theme-toggle');
-  tt ? sb.insertBefore(btn, tt) : sb.appendChild(btn);
+  window.encStr = async function(text, pw) {
+    // Only process if text contains <cs> tags (fast-path for titles etc.)
+    const processed = text.includes('<cs>') ? await processCSForSave(text, pw) : text;
+    return window._origEncStr(processed, pw);
+  };
 }
 
 /* ════════════════════════════════════════════
@@ -1159,14 +1191,12 @@ function injectTerminalButton() {
 ════════════════════════════════════════════ */
 async function p2init() {
   try {
-    await waitFor(() => window.S && window.removeEntry, 60, 60);
+    await waitFor(() => window.S && window.removeEntry && window.encStr, 60, 60);
   } catch {
-    console.warn(
-      '[patch2] window.S not found. Add to main <script> before </script>:\n' +
-      '  window.S=S; window.encStr=encStr; window.saveEntry=saveEntry;\n' +
-      '  window.renderList=renderList; window.notify=notify; window.lock=lock;'
-    );
+    console.warn('[patch2] window.S / encStr not found. Add exports to HTML (see patch2.js header).');
   }
+
+  wrapEncStr(); // must run before any save operations
 
   injectStatsButton();
   buildStatsPanel();
@@ -1181,5 +1211,5 @@ async function p2init() {
     if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); openTerminal(); }
   });
 
-  console.log('[patch2] v2 loaded ✓');
+  console.log('[patch2] v2 loaded ✓  — cs encryption active');
 }
