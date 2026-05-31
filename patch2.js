@@ -233,8 +233,6 @@ const P2_CSS = `
 
 /* ════════════════════════════════════════════
    LOCAL CRYPTO HELPERS
-   (mirrors the HTML's crypto — needed to
-   encrypt/decrypt individual <cs> payloads)
 ════════════════════════════════════════════ */
 const _enc = new TextEncoder();
 const _dec = new TextDecoder();
@@ -272,35 +270,21 @@ async function _p2DecStr(obj, pw) {
 
 /* ════════════════════════════════════════════
    CS ENCRYPTION LAYER
-   Format stored in DB:
-     <cs>ENC:base64(json)</cs>
-   where json = {salt, iv, data} from AES-GCM
-   on the plaintext name.
-
-   Plain <cs>name</cs> (un-encrypted) is still
-   supported for display — both show as ████.
 ════════════════════════════════════════════ */
 const CS_ENC_PREFIX = 'ENC:';
 
-/** Encrypt a single name for storage inside a <cs> tag */
 async function encryptCSName(name, pw) {
   const obj     = await _p2EncStr(name, pw);
   const payload = btoa(JSON.stringify(obj));
   return CS_ENC_PREFIX + payload;
 }
 
-/** Decrypt a stored ENC:... value back to the plaintext name */
 async function decryptCSName(encoded, pw) {
-  if (!encoded.startsWith(CS_ENC_PREFIX)) return encoded; // plain fallback
+  if (!encoded.startsWith(CS_ENC_PREFIX)) return encoded;
   const obj = JSON.parse(atob(encoded.slice(CS_ENC_PREFIX.length)));
   return _p2DecStr(obj, pw);
 }
 
-/**
- * Process content for SAVING:
- *   <cs>name</cs>        → <cs>ENC:base64</cs>   (plain → encrypted)
- *   <cs>ENC:base64</cs>  → unchanged              (already encrypted)
- */
 async function processCSForSave(content, pw) {
   if (!content.includes('<cs>')) return content;
   const parts = content.split(/(<cs>[\s\S]*?<\/cs>)/gi);
@@ -308,18 +292,13 @@ async function processCSForSave(content, pw) {
     const m = part.match(/^<cs>([\s\S]*?)<\/cs>$/i);
     if (!m) return part;
     const inner = m[1];
-    if (inner.startsWith(CS_ENC_PREFIX)) return part; // already encrypted
+    if (inner.startsWith(CS_ENC_PREFIX)) return part;
     const enc = await encryptCSName(inner, pw);
     return `<cs>${enc}</cs>`;
   }));
   return out.join('');
 }
 
-/**
- * Process content for EDITING:
- *   <cs>ENC:base64</cs>  → <cs>name</cs>   (decrypt so user can edit)
- *   <cs>name</cs>        → unchanged
- */
 async function processCSForEdit(content, pw) {
   if (!content.includes('<cs>')) return content;
   const parts = content.split(/(<cs>[\s\S]*?<\/cs>)/gi);
@@ -327,12 +306,12 @@ async function processCSForEdit(content, pw) {
     const m = part.match(/^<cs>([\s\S]*?)<\/cs>$/i);
     if (!m) return part;
     const inner = m[1];
-    if (!inner.startsWith(CS_ENC_PREFIX)) return part; // plain text already
+    if (!inner.startsWith(CS_ENC_PREFIX)) return part;
     try {
       const name = await decryptCSName(inner, pw);
       return `<cs>${name}</cs>`;
     } catch {
-      return part; // decrypt failed — leave as-is
+      return part;
     }
   }));
   return out.join('');
@@ -400,14 +379,8 @@ function colorizeNames(text, freq) {
 
 /* ════════════════════════════════════════════
    CENSORING SYSTEM
-   Handles both:
-     <cs>plainname</cs>      (legacy / during editing preview)
-     <cs>ENC:base64</cs>     (stored encrypted form)
-   Both render as ████ in viewer.
 ════════════════════════════════════════════ */
 const censorMap = new Map();
-
-// Matches any <cs>…</cs> block, encrypted or plain
 const CS_RE = /(<cs>[\s\S]*?<\/cs>)/gi;
 
 function splitCensored(content) {
@@ -415,7 +388,6 @@ function splitCensored(content) {
     const m = part.match(/^<cs>([\s\S]*?)<\/cs>$/i);
     if (!m) return { type:'plain', text: part };
     const inner = m[1];
-    // Both encrypted and plain forms are "censored" — display as ████
     return { type:'censored', raw: inner, isEncrypted: inner.startsWith(CS_ENC_PREFIX) };
   });
 }
@@ -435,7 +407,6 @@ function renderContentHTML(content, entryId) {
     return colorizeNames(p.text, freq);
   }).join('');
 
-  // Track whether entry has any censored blocks
   const hasCensored = parts.some(p => p.type === 'censored');
   if (hasCensored) censorMap.set(entryId, true);
   else censorMap.delete(entryId);
@@ -444,35 +415,132 @@ function renderContentHTML(content, entryId) {
 }
 
 /* ════════════════════════════════════════════
+   SAFE CONTENT — strips <cs> for animation
+   Replaces any <cs>…</cs> span with ████ so
+   the glitch animation never reveals names.
+════════════════════════════════════════════ */
+function safeContentForAnimation(content) {
+  return content.replace(/<cs>[\s\S]*?<\/cs>/gi, '████');
+}
+
+/* ════════════════════════════════════════════
+   HOOK renderDecrypted
+   ─ Intercepts BEFORE textContent / animDecrypt
+     gets the raw content string.
+   ─ Passes cs-scrubbed text to animation,
+     then immediately replaces body innerHTML
+     with proper renderContentHTML output.
+════════════════════════════════════════════ */
+function hookRenderDecrypted() {
+  const orig = window.renderDecrypted;
+  if (typeof orig !== 'function') {
+    console.warn('[patch2] renderDecrypted not found on window — cs hook skipped');
+    return;
+  }
+
+  window.renderDecrypted = function p2_renderDecrypted(entry, animate) {
+    const S      = window.S;
+    const cached = S?.cache.get(entry.id);
+
+    // No cached content — fall through to original (shows encrypted state anyway)
+    if (!cached || !cached.content.includes('<cs>')) {
+      orig(entry, animate);
+      return;
+    }
+
+    // Build a version of the cache with cs-scrubbed content for animation/textContent
+    const safeContent = safeContentForAnimation(cached.content);
+
+    // Temporarily swap content in cache so orig() never sees raw <cs> data
+    const realContent  = cached.content;
+    cached.content     = safeContent;
+    orig(entry, animate);
+    cached.content     = realContent; // restore immediately
+
+    // Now apply proper censored HTML rendering.
+    // For animated entries the animation is running concurrently; we schedule
+    // the innerHTML swap just after the animation would finish on the body element.
+    // animDecrypt speed is ~10ms/tick for body; worst-case ~300 chars → ~600ms.
+    // We poll until the .decrypting class is gone, then apply, capped at 1.5s.
+    const applyRendered = () => {
+      const cEl = document.getElementById(`edc-${entry.id}`);
+      if (!cEl || cEl.classList.contains('enc')) return; // wrong state
+      if (cEl.dataset.p2id === entry.id) return;         // already applied
+      cEl.dataset.p2id = entry.id;
+      cEl.innerHTML    = renderContentHTML(realContent, entry.id);
+
+      // Edited badge
+      const tEl = document.getElementById(`edt-${entry.id}`);
+      if (entry.edited_at && tEl && !tEl.querySelector('.edited-badge')) {
+        const badge       = document.createElement('span');
+        badge.className   = 'edited-badge';
+        badge.title       = 'Last edited: ' + new Date(entry.edited_at).toLocaleString();
+        badge.textContent = 'edited';
+        tEl.appendChild(badge);
+      }
+    };
+
+    if (!animate) {
+      // Non-animated (entry switching): apply on next microtask — element exists already
+      Promise.resolve().then(applyRendered);
+    } else {
+      // Animated: poll until decrypting class is removed (animation done), max 1.8s
+      let elapsed = 0;
+      const POLL  = 80;
+      const MAX   = 1800;
+      const poll  = setInterval(() => {
+        elapsed += POLL;
+        const cEl = document.getElementById(`edc-${entry.id}`);
+        const done = !cEl || !cEl.classList.contains('decrypting');
+        if (done || elapsed >= MAX) {
+          clearInterval(poll);
+          applyRendered();
+        }
+      }, POLL);
+    }
+  };
+}
+
+/* ════════════════════════════════════════════
    WATCH entry-display — MutationObserver
+   Kept as a safety net for any other render
+   paths, but the primary fix is hookRenderDecrypted.
 ════════════════════════════════════════════ */
 function watchForDecryptedContent() {
   const display = $p('entry-display');
   if (!display) return;
-  let _timer = null;
-  const obs = new MutationObserver(() => {
-    clearTimeout(_timer);
-    _timer = setTimeout(() => {
-      const cEl = display.querySelector('.ed-body:not(.enc):not(.decrypting)');
-      if (!cEl) return;
-      const tEl = display.querySelector('[id^="edt-"]:not(.enc)');
-      const id  = tEl ? tEl.id.replace('edt-','') : null;
-      const S   = window.S;
-      if (!S || !id) return;
-      const c = S.cache.get(id);
-      if (!c) return;
-      if (cEl.dataset.p2id === id) return;
-      cEl.dataset.p2id = id;
-      cEl.innerHTML = renderContentHTML(c.content, id);
+
+  const apply = () => {
+    const cEl = display.querySelector('.ed-body:not(.enc):not(.decrypting)');
+    if (!cEl) return;
+    const tEl = display.querySelector('[id^="edt-"]:not(.enc)');
+    const id  = tEl ? tEl.id.replace('edt-','') : null;
+    const S   = window.S;
+    if (!S || !id) return;
+    const c = S.cache.get(id);
+    if (!c) return;
+    if (cEl.dataset.p2id === id) return; // already handled by hookRenderDecrypted
+    cEl.dataset.p2id = id;
+    cEl.innerHTML    = renderContentHTML(c.content, id);
+
+    if (tEl && !tEl.querySelector('.edited-badge')) {
       const entry = S.entries.find(e => e.id === id);
-      if (entry?.edited_at && tEl && !tEl.querySelector('.edited-badge')) {
-        const badge = document.createElement('span');
-        badge.className = 'edited-badge';
-        badge.title = 'Last edited: ' + new Date(entry.edited_at).toLocaleString();
+      if (entry?.edited_at) {
+        const badge       = document.createElement('span');
+        badge.className   = 'edited-badge';
+        badge.title       = 'Last edited: ' + new Date(entry.edited_at).toLocaleString();
         badge.textContent = 'edited';
         tEl.appendChild(badge);
       }
-    }, 350);
+    }
+  };
+
+  let _timer = null;
+  const obs = new MutationObserver(() => {
+    // Immediate pass for non-animated renders; short delay as fallback
+    apply();
+    clearTimeout(_timer);
+    _timer = setTimeout(apply, 120);
   });
   obs.observe(display, { childList:true, subtree:true, attributes:true, attributeFilter:['class','style'] });
 }
@@ -866,7 +934,6 @@ function cmdStatsTrm() {
   trmPrint('');
 }
 
-/* ── /uncensor  — decrypts ENC: blobs then displays ── */
 async function cmdUncensor(args) {
   const S = window.S;
   if (!S) { trmPrint('window.S not available.', 'trm-err'); return; }
@@ -915,7 +982,6 @@ async function cmdUncensor(args) {
     trmPrint(`   ${c.title}`);
     trmPrint('');
 
-    // Build display with decrypted names
     const parts  = splitCensored(c.content);
     const names  = [];
     const htmlParts = await Promise.all(parts.map(async p => {
@@ -949,7 +1015,6 @@ async function cmdUncensor(args) {
   trmPrint('');
 }
 
-/* ── /edit — opens full modal editor ── */
 function cmdEdit(args) {
   const S = window.S;
   if (!S) { trmPrint('window.S not available.', 'trm-err'); return; }
@@ -966,7 +1031,6 @@ function cmdEdit(args) {
   openEditModal(entry, cached);
 }
 
-/* ── /delete ── */
 function cmdDelete(args) {
   const S = window.S;
   if (!S) { trmPrint('window.S not available.', 'trm-err'); return; }
@@ -1012,9 +1076,6 @@ function injectTerminalButton() {
 
 /* ════════════════════════════════════════════
    EDIT MODAL
-   - Decrypts <cs>ENC:…</cs> → <cs>name</cs>
-     so user edits plain <cs> syntax
-   - On save: processCSForSave re-encrypts them
 ════════════════════════════════════════════ */
 function buildEditModal() {
   if ($p('p2-edit-modal')) return;
@@ -1083,19 +1144,16 @@ async function openEditModal(entry, cached) {
   $p('p2em-date').value  = entry.date;
   $p('p2em-time').value  = entry.time || '';
 
-  // Set flair
   const fr = document.querySelector(`.p2em-fr[value="${entry.flair}"]`);
   if (fr) fr.checked = true;
   else { const vv = document.querySelector('.p2em-fr[value="vivid"]'); if (vv) vv.checked = true; }
 
-  // Show loading while we decrypt <cs> blobs
   $p('p2em-loading').style.display = 'flex';
   $p('p2em-content').style.display = 'none';
   $p('p2em-save').disabled = true;
 
   $p('p2-edit-modal').classList.add('show');
 
-  // Decrypt cs blobs to plain <cs>name</cs> for editing
   const S = window.S;
   const editableContent = S?.pw
     ? await processCSForEdit(cached.content, S.pw)
@@ -1135,7 +1193,6 @@ async function commitEditModal() {
   saveBtn.textContent = 'Encrypting…'; saveBtn.disabled = true;
 
   try {
-    // Encrypt any <cs> tags before outer encryption
     const processedContent = await processCSForSave(newContent, S.pw);
 
     const enc_title   = await window._origEncStr(newTitle,          S.pw);
@@ -1147,7 +1204,6 @@ async function commitEditModal() {
     const idx = S.entries.findIndex(e => e.id === ctx.entry.id);
     if (idx >= 0) S.entries[idx] = updated;
     S.entries.sort((a,b) => new Date(b.date) - new Date(a.date));
-    // Cache stores the processed (cs-encrypted) content
     S.cache.set(ctx.entry.id, { title: newTitle, content: processedContent });
 
     window.renderList?.();
@@ -1171,16 +1227,12 @@ async function commitEditModal() {
 
 /* ════════════════════════════════════════════
    WRAP window.encStr
-   Intercepts every save (addEntry + editModal)
-   to encrypt <cs> tags BEFORE the outer AES.
-   Original is stored as window._origEncStr.
 ════════════════════════════════════════════ */
 function wrapEncStr() {
   if (!window.encStr) return;
   window._origEncStr = window.encStr;
 
   window.encStr = async function(text, pw) {
-    // Only process if text contains <cs> tags (fast-path for titles etc.)
     const processed = text.includes('<cs>') ? await processCSForSave(text, pw) : text;
     return window._origEncStr(processed, pw);
   };
@@ -1191,12 +1243,13 @@ function wrapEncStr() {
 ════════════════════════════════════════════ */
 async function p2init() {
   try {
-    await waitFor(() => window.S && window.removeEntry && window.encStr, 60, 60);
+    await waitFor(() => window.S && window.removeEntry && window.encStr && window.renderDecrypted, 60, 60);
   } catch {
-    console.warn('[patch2] window.S / encStr not found. Add exports to HTML (see patch2.js header).');
+    console.warn('[patch2] window globals not found. Ensure renderDecrypted is exported in HTML.');
   }
 
-  wrapEncStr(); // must run before any save operations
+  wrapEncStr();
+  hookRenderDecrypted(); // ← must run after wrapEncStr, before any interaction
 
   injectStatsButton();
   buildStatsPanel();
@@ -1211,5 +1264,5 @@ async function p2init() {
     if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); openTerminal(); }
   });
 
-  console.log('[patch2] v2 loaded ✓  — cs encryption active');
+  console.log('[patch2] v2 loaded ✓  — cs encryption active, renderDecrypted hooked');
 }
