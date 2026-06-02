@@ -1,10 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════
    patch9.js  —  Dream Journal extension (v9)
    • Lucid Bucket List notebook panel (20 goals, top 3 starred)
-   • File menu gets a dropdown: Export + Lucid List
-   • Standalone #menu-export hidden (lives inside File dropdown now)
-   • Desktop: notebook stretches full landscape
-   • Mobile: notebook is portrait-scrollable
+   • File menu item gets a dropdown: Export + Lucid List
+   • #menu-export hidden (proxied through File > Export)
+   • Desktop: notebook stretches full landscape (2-col grid)
+   • Mobile: single column portrait
 ═══════════════════════════════════════════════════════════════ */
 
 (function () {
@@ -42,61 +42,72 @@
   const P9_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Caveat+Brush&display=swap');
 
-/* ── File dropdown menu ── */
-#p9-file-menu {
+/* ── File dropdown ── */
+#p9-file-wrap {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: stretch;
 }
-#p9-file-menu .menu-item {
+#p9-file-trigger {
+  color: var(--ink-mid);
   cursor: pointer;
+  padding: 4px 10px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+  font-family: 'IBM Plex Mono', monospace;
   user-select: none;
+  transition: background 0.1s, color 0.1s;
 }
-#p9-file-menu .menu-item.active {
-  background: var(--ink, #d4cfc6);
-  color: var(--paper, #0e0d0b);
+#p9-file-trigger:hover,
+#p9-file-wrap.open #p9-file-trigger {
+  background: var(--ink);
+  color: var(--paper);
 }
 #p9-dropdown {
   display: none;
   position: absolute;
   top: 100%;
   left: 0;
-  min-width: 160px;
-  background: var(--paper-dim, #161410);
-  border: 1px solid var(--rule-dark, #3a3630);
-  border-top: none;
-  z-index: 999;
-  box-shadow: 4px 4px 0 rgba(0,0,0,.4);
+  min-width: 170px;
+  background: var(--paper-dim);
+  border: 1px solid var(--rule-dark);
+  border-top: 2px solid var(--ink);
+  z-index: 500;
+  box-shadow: 3px 3px 0 rgba(0,0,0,.5);
 }
-#p9-file-menu.open #p9-dropdown { display: block; }
+#p9-file-wrap.open #p9-dropdown { display: block; }
 .p9-dd-item {
   display: block;
   width: 100%;
-  padding: 6px 14px;
+  padding: 7px 14px;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
-  letter-spacing: .5px;
-  color: var(--ink-soft, #7a7268);
+  letter-spacing: 0.5px;
+  color: var(--ink-soft);
   background: none;
   border: none;
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
   box-sizing: border-box;
+  border-bottom: 1px solid var(--rule);
 }
+.p9-dd-item:last-child { border-bottom: none; }
 .p9-dd-item:hover {
-  background: var(--ink, #d4cfc6);
-  color: var(--paper, #0e0d0b);
-}
-.p9-dd-sep {
-  height: 1px;
-  background: var(--rule-dark, #3a3630);
-  margin: 2px 0;
+  background: var(--ink);
+  color: var(--paper);
 }
 
-/* ── Panel overlay ── */
+/* ── Panel ── */
 #p9-panel {
   position: fixed; inset: 0;
-  background: var(--paper, #0e0d0b);
+  background: var(--paper);
   z-index: 191;
   display: none;
   flex-direction: column;
@@ -106,8 +117,8 @@
 #p9-panel.show { display: flex; }
 
 .p9-titlebar {
-  background: var(--ink, #d4cfc6);
-  color: var(--paper, #0e0d0b);
+  background: var(--ink);
+  color: var(--paper);
   padding: 5px 12px;
   font-size: 11px;
   letter-spacing: 1px;
@@ -118,65 +129,63 @@
 }
 .p9-close {
   background: none;
-  border: 1px solid rgba(0,0,0,.25);
+  border: 1px solid rgba(0,0,0,.3);
   cursor: pointer;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
-  color: var(--paper-dim, #161410);
+  color: var(--paper-dim);
   letter-spacing: 1px;
   padding: 1px 6px;
 }
 .p9-close:hover { background: #c84040; color: #fff; border-color: #c84040; }
 
-/* ── Body: centres the notebook ── */
+/* ── Body ── */
 .p9-body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
-  align-items: stretch;        /* stretch on desktop */
+  align-items: stretch;
   justify-content: center;
   padding: 24px;
-  background: var(--paper, #0e0d0b);
+  background: var(--paper);
 }
 
-/* ── Desktop: full landscape stretch ── */
+/* ── Notebook: desktop full landscape ── */
 .p9-notebook {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1400px;
   background: #f5f0e8;
   border-radius: 2px;
   box-shadow:
     0 0 0 1px #c8bfa8,
     4px 4px 0 0 #b8ad96,
     8px 8px 0 0 #a89e88,
-    0 20px 80px rgba(0,0,0,.6);
-  position: relative;
-  overflow: hidden;
+    0 24px 80px rgba(0,0,0,.65);
   display: grid;
-  /* spine | header+list */
-  grid-template-columns: 48px 1fr;
+  grid-template-columns: 44px 1fr;
   grid-template-rows: auto 1fr auto;
+  overflow: hidden;
 }
 
-/* spine column */
+/* spine */
 .p9-spine {
   grid-column: 1;
   grid-row: 1 / -1;
-  background: linear-gradient(to right, #c0b090 0%, #d8cdb0 65%, #e8e0cc 100%);
-  border-right: 1px solid #b8a888;
+  background: linear-gradient(to right, #bfae90 0%, #d4c8a8 60%, #e4dcc8 100%);
+  border-right: 1px solid #b8a880;
   display: flex;
   flex-direction: column;
   justify-content: space-around;
   align-items: center;
-  padding: 24px 0;
+  padding: 28px 0;
 }
 .p9-ring {
   width: 14px; height: 14px;
   border-radius: 50%;
   background: var(--paper, #0e0d0b);
-  border: 2px solid #888070;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.1);
+  border: 2px solid #807060;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.15);
   flex-shrink: 0;
 }
 
@@ -184,59 +193,57 @@
 .p9-header {
   grid-column: 2;
   grid-row: 1;
-  padding: 28px 36px 14px 28px;
-  border-bottom: 2px solid #c0a878;
+  padding: 26px 40px 14px 28px;
+  border-bottom: 2px solid #c0a870;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 20px;
+  flex-wrap: wrap;
 }
-.p9-header-left {}
 .p9-cursive-title {
   font-family: 'Caveat Brush', 'Caveat', cursive;
-  font-size: 48px;
-  color: #2a1f0e;
+  font-size: 52px;
+  color: #1e1508;
   line-height: 1;
   display: block;
   margin-bottom: 4px;
 }
 .p9-cursive-sub {
   font-family: 'Caveat', cursive;
-  font-size: 20px;
+  font-size: 21px;
   color: #7a6848;
   display: block;
   font-weight: 400;
 }
 .p9-legend {
   font-family: 'Caveat', cursive;
-  font-size: 15px;
-  color: #9a8860;
+  font-size: 16px;
+  color: #8a7850;
   display: flex;
   align-items: center;
   gap: 5px;
   white-space: nowrap;
   padding-bottom: 4px;
 }
-.p9-legend-star { color: #c87820; font-size: 17px; }
+.p9-legend-star { color: #c07010; font-size: 18px; }
 
-/* ruled list area */
+/* ruled list — 2 col on desktop */
 .p9-lines {
   grid-column: 2;
   grid-row: 2;
-  padding: 4px 36px 20px 28px;
+  padding: 0 40px 20px 28px;
   background-image: repeating-linear-gradient(
     to bottom,
     transparent,
     transparent 31px,
-    #cfc6b0 31px,
-    #cfc6b0 32px
+    #ccc4a8 31px,
+    #ccc4a8 32px
   );
-  background-position: 0 40px;
-
-  /* desktop: two-column grid for landscape use */
+  background-position: 0 38px;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0 32px;
+  gap: 0 40px;
   align-content: start;
 }
 
@@ -245,91 +252,73 @@
   grid-column: 2;
   grid-row: 3;
   font-family: 'Caveat', cursive;
-  font-size: 11px;
-  color: #c8bc9a;
+  font-size: 12px;
+  color: #c0b490;
   text-align: right;
-  padding: 6px 36px 18px 0;
+  padding: 6px 40px 18px 0;
   letter-spacing: 1px;
+  border-top: 1px dashed #ccc4a8;
 }
 
-/* ── individual item ── */
+/* items */
 .p9-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 7px;
   min-height: 32px;
   padding: 5px 0;
-  animation: p9-fadeIn .3s ease both;
+  animation: p9-in .32s ease both;
 }
-${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(i*0.04+0.04).toFixed(2)}s}`).join('\n')}
-
-@keyframes p9-fadeIn {
-  from { opacity: 0; transform: translateX(-5px); }
-  to   { opacity: 1; transform: translateX(0); }
+${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(.05+i*.04).toFixed(2)}s}`).join('\n')}
+@keyframes p9-in {
+  from { opacity:0; transform:translateX(-6px); }
+  to   { opacity:1; transform:none; }
 }
 .p9-num {
   font-family: 'Caveat', cursive;
-  font-size: 15px;
-  color: #a89060;
-  flex-shrink: 0;
-  width: 22px;
-  text-align: right;
-  padding-top: 2px;
+  font-size: 14px; color: #a88848;
+  flex-shrink: 0; width: 22px;
+  text-align: right; padding-top: 3px;
   user-select: none;
 }
 .p9-star {
-  flex-shrink: 0;
-  width: 16px;
-  font-size: 14px;
-  user-select: none;
-  line-height: 1.6;
+  flex-shrink: 0; width: 16px;
+  font-size: 14px; user-select: none;
+  line-height: 1.65;
 }
-.p9-star.starred   { color: #c87820; filter: drop-shadow(0 0 3px #c8782066); }
-.p9-star.unstarred { color: #d8d0bc; }
+.p9-star.on  { color: #c07010; filter: drop-shadow(0 0 3px #c0701055); }
+.p9-star.off { color: #d8d0b8; }
 .p9-text {
   font-family: 'Caveat', cursive;
-  font-size: 18px;
-  color: #1a1208;
-  line-height: 1.65;
-  flex: 1;
+  font-size: 19px; color: #1a1208;
+  line-height: 1.65; flex: 1;
 }
-.p9-item.is-starred {
-  background: linear-gradient(to right, #f5e8c870, transparent 95%);
-  border-radius: 2px;
-}
-.p9-item.is-starred .p9-text {
-  font-weight: 600;
-  color: #0e0a04;
-}
+.p9-item.pri { background: linear-gradient(to right, #f0e4b855, transparent 92%); border-radius: 2px; }
+.p9-item.pri .p9-text { font-weight: 600; color: #0e0804; }
 
-/* ══ MOBILE — portrait, single column ══ */
+/* ── Mobile: portrait single col ── */
 @media (max-width: 700px) {
-  .p9-body {
-    padding: 0;
-    align-items: flex-start;
-  }
+  .p9-body { padding: 0; align-items: flex-start; }
   .p9-notebook {
-    max-width: 100%;
-    border-radius: 0;
+    max-width: 100%; border-radius: 0;
     box-shadow: none;
-    grid-template-columns: 32px 1fr;
+    grid-template-columns: 30px 1fr;
     min-height: 100%;
   }
+  .p9-spine { padding: 20px 0; }
   .p9-ring { width: 11px; height: 11px; }
   .p9-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    padding: 20px 18px 12px 18px;
+    flex-direction: column; align-items: flex-start;
+    gap: 6px; padding: 18px 16px 12px 16px;
   }
-  .p9-cursive-title { font-size: 36px; }
-  .p9-cursive-sub   { font-size: 17px; }
+  .p9-cursive-title { font-size: 38px; }
+  .p9-cursive-sub   { font-size: 18px; }
   .p9-lines {
-    grid-template-columns: 1fr;   /* single column on mobile */
-    padding: 4px 18px 20px 16px;
+    grid-template-columns: 1fr;
+    padding: 0 16px 20px 14px;
     gap: 0;
   }
-  .p9-watermark { padding: 6px 18px 16px 0; }
+  .p9-watermark { padding: 6px 16px 16px 0; }
   .p9-text { font-size: 17px; }
 }
 `;
@@ -347,21 +336,17 @@ ${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(i
   ══════════════════════════════════════════════════════════ */
   function buildPanel() {
     if (document.getElementById('p9-panel')) return;
+    const rings = Array(9).fill('<div class="p9-ring"></div>').join('');
+    const rows  = LUCID_LIST.map((item, i) =>
+      `<div class="p9-item${item.starred ? ' pri' : ''}">
+        <span class="p9-num">${i + 1}.</span>
+        <span class="p9-star ${item.starred ? 'on' : 'off'}">${item.starred ? '★' : '☆'}</span>
+        <span class="p9-text">${item.text}</span>
+      </div>`
+    ).join('');
 
     const panel = document.createElement('div');
     panel.id = 'p9-panel';
-
-    // 9 rings
-    const rings = Array(9).fill('<div class="p9-ring"></div>').join('');
-
-    // list rows
-    const rows = LUCID_LIST.map((item, i) => `
-      <div class="p9-item${item.starred ? ' is-starred' : ''}">
-        <span class="p9-num">${i + 1}.</span>
-        <span class="p9-star ${item.starred ? 'starred' : 'unstarred'}">${item.starred ? '★' : '☆'}</span>
-        <span class="p9-text">${item.text}</span>
-      </div>`).join('');
-
     panel.innerHTML = `
       <div class="p9-titlebar">
         <span>DREAM_JOURNAL.EXE — Lucid Bucket List</span>
@@ -371,7 +356,7 @@ ${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(i
         <div class="p9-notebook">
           <div class="p9-spine">${rings}</div>
           <div class="p9-header">
-            <div class="p9-header-left">
+            <div>
               <span class="p9-cursive-title">things to do lucid</span>
               <span class="p9-cursive-sub">if I ever get the chance ✦</span>
             </div>
@@ -380,11 +365,10 @@ ${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(i
               <span>= most important</span>
             </div>
           </div>
-          <div class="p9-lines" id="p9-lines">${rows}</div>
+          <div class="p9-lines">${rows}</div>
           <div class="p9-watermark">consciousness archive · lucid log</div>
         </div>
       </div>`;
-
     document.body.appendChild(panel);
 
     document.getElementById('p9-close').addEventListener('click', closePanel);
@@ -393,114 +377,95 @@ ${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(i
     });
   }
 
-  function openPanel() {
+  function openPanel()  {
     if (!document.getElementById('p9-panel')) buildPanel();
     document.getElementById('p9-panel').classList.add('show');
   }
-
   function closePanel() {
     document.getElementById('p9-panel')?.classList.remove('show');
   }
 
   /* ══════════════════════════════════════════════════════════
-     FILE DROPDOWN — wraps existing "File" menu item
-     Structure added:
-       <span id="p9-file-menu" class="menu-item-wrapper">
-         <span class="menu-item" id="menu-file-trigger">File</span>
-         <div id="p9-dropdown">
-           <button>Export</button>
-           <div class="p9-dd-sep"></div>
-           <button>Lucid List</button>
-         </div>
-       </span>
+     FILE DROPDOWN
+     The HTML has: <span class="menu-item"><span class="ul">F</span>ile</span>
+     — first .menu-item in #menubar, no id.
+     Strategy: replace it in-place with our wrapper div.
   ══════════════════════════════════════════════════════════ */
   function buildFileDropdown() {
-    if (document.getElementById('p9-file-menu')) return;
+    if (document.getElementById('p9-file-wrap')) return;
 
-    // Find the File menu item — it's the first .menu-item in #menubar
     const menubar = document.getElementById('menubar');
     if (!menubar) return;
 
-    const fileItem = Array.from(menubar.querySelectorAll('.menu-item'))
-      .find(el => el.textContent.trim().replace(/\s+/g,'').toLowerCase().startsWith('file'));
+    // The File item is the very first .menu-item child
+    const fileItem = menubar.querySelector('.menu-item');
     if (!fileItem) return;
 
-    const exportItem = document.getElementById('menu-export');
+    // Build the wrapper
+    const wrap = document.createElement('div');
+    wrap.id = 'p9-file-wrap';
 
-    // Wrap the File label in a dropdown container
-    const wrapper = document.createElement('span');
-    wrapper.id = 'p9-file-menu';
-    wrapper.style.cssText = 'position:relative;display:inline-block;';
+    // Trigger button — visually identical to a menu-item
+    const trigger = document.createElement('div');
+    trigger.id = 'p9-file-trigger';
+    trigger.innerHTML = '<span style="text-decoration:underline">F</span>ile';
 
-    fileItem.parentNode.insertBefore(wrapper, fileItem);
-    wrapper.appendChild(fileItem);
-
-    // Make it show active when open
-    const trigger = fileItem;
-
-    // Build dropdown
+    // Dropdown
     const dropdown = document.createElement('div');
     dropdown.id = 'p9-dropdown';
 
-    // Export button — calls the original export handler
     const exportBtn = document.createElement('button');
     exportBtn.className = 'p9-dd-item';
-    exportBtn.textContent = 'Export';
+    exportBtn.innerHTML = 'E<span style="text-decoration:underline">x</span>port';
     exportBtn.addEventListener('click', () => {
       closeDropdown();
-      // Delegate to the real export: try clicking hidden #menu-export,
-      // or call window.exportEntries if it exists
-      if (exportItem) {
-        exportItem.click();
-      } else if (typeof window.exportEntries === 'function') {
-        window.exportEntries();
+      // Call the app's own export function directly
+      if (typeof window.exportJSON === 'function') {
+        window.exportJSON();
+      } else {
+        // fallback: click the hidden original export item
+        document.getElementById('menu-export')?.click();
       }
     });
-
-    const sep = document.createElement('div');
-    sep.className = 'p9-dd-sep';
 
     const lucidBtn = document.createElement('button');
     lucidBtn.className = 'p9-dd-item';
     lucidBtn.id = 'p9-lucid-btn';
-    lucidBtn.textContent = 'Lucid List';
+    lucidBtn.innerHTML = '<span style="text-decoration:underline">L</span>ucid List';
     lucidBtn.addEventListener('click', () => {
       closeDropdown();
       openPanel();
     });
 
     dropdown.appendChild(exportBtn);
-    dropdown.appendChild(sep);
     dropdown.appendChild(lucidBtn);
-    wrapper.appendChild(dropdown);
+    wrap.appendChild(trigger);
+    wrap.appendChild(dropdown);
 
-    // Toggle on File click
+    // Swap: insert wrapper before the original File item, then hide original
+    menubar.insertBefore(wrap, fileItem);
+    fileItem.style.display = 'none';
+
+    // Also hide the standalone Export menu item
+    const menuExport = document.getElementById('menu-export');
+    if (menuExport) menuExport.style.display = 'none';
+
+    // Toggle dropdown on trigger click
     trigger.addEventListener('click', e => {
       e.stopPropagation();
-      wrapper.classList.toggle('open');
-      trigger.classList.toggle('active', wrapper.classList.contains('open'));
+      wrap.classList.toggle('open');
     });
 
-    // Close on outside click
+    // Close on any outside click
     document.addEventListener('click', () => closeDropdown());
-
-    // Hide the standalone export item (it lives in the dropdown now)
-    if (exportItem) {
-      exportItem.style.display = 'none';
-      exportItem.dataset.p9hidden = '1';
-    }
   }
 
   function closeDropdown() {
-    const w = document.getElementById('p9-file-menu');
-    if (!w) return;
-    w.classList.remove('open');
-    const trigger = w.querySelector('.menu-item');
-    if (trigger) trigger.classList.remove('active');
+    document.getElementById('p9-file-wrap')?.classList.remove('open');
   }
 
   /* ══════════════════════════════════════════════════════════
-     PATCH4 INTEGRATION — encrypt dropdown labels when locked
+     PATCH4 INTEGRATION
   ══════════════════════════════════════════════════════════ */
   const P9_GL = '░▒▓▄▀■□~*+=#@&?!./|:ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz0123456789';
   function p9Scramble(text) {
@@ -515,12 +480,14 @@ ${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(i
     const dot = document.getElementById('lock-dot');
     if (!dot || dot.__p9hooked) return;
     dot.__p9hooked = true;
-
     new MutationObserver(() => {
       const isOn = dot.classList.contains('on');
-      const lucidBtn = document.getElementById('p9-lucid-btn');
-      if (!lucidBtn) return;
-      lucidBtn.textContent = isOn ? 'Lucid List' : p9Scramble('Lucid List');
+      const btn = document.getElementById('p9-lucid-btn');
+      if (btn) btn.textContent = isOn ? 'Lucid List' : p9Scramble('Lucid List');
+      const trig = document.getElementById('p9-file-trigger');
+      if (trig) trig.innerHTML = isOn
+        ? '<span style="text-decoration:underline">F</span>ile'
+        : p9Scramble('File');
     }).observe(dot, { attributes: true, attributeFilter: ['class'] });
   }
 
@@ -528,7 +495,8 @@ ${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(i
      INIT
   ══════════════════════════════════════════════════════════ */
   document.addEventListener('DOMContentLoaded', () => {
-    [0, 300, 700, 1400].forEach(ms => setTimeout(() => {
+    // Run immediately and retry to handle patch ordering
+    [0, 200, 500, 1000].forEach(ms => setTimeout(() => {
       buildFileDropdown();
       hookPatch4();
     }, ms));
