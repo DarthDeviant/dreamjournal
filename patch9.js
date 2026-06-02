@@ -1,39 +1,39 @@
 /* ═══════════════════════════════════════════════════════════════
    patch9.js  —  Dream Journal extension (v9)
-   • Adds "Lucid List" menu item
-   • Opens a notebook-style panel with 20 lucid dream goals
-   • Top 3 are starred / marked as priority
-   • Handwritten cursive heading, ruled notebook paper aesthetic
-   • Integrates with existing patch4 lock/unlock encryption
+   • Lucid Bucket List notebook panel (20 goals, top 3 starred)
+   • File menu gets a dropdown: Export + Lucid List
+   • Standalone #menu-export hidden (lives inside File dropdown now)
+   • Desktop: notebook stretches full landscape
+   • Mobile: notebook is portrait-scrollable
 ═══════════════════════════════════════════════════════════════ */
 
 (function () {
   'use strict';
 
   /* ══════════════════════════════════════════════════════════
-     DATA — 20 lucid dream goals, first 3 are "starred"
+     DATA
   ══════════════════════════════════════════════════════════ */
   const LUCID_LIST = [
-    { text: 'Fly above the clouds and dive through them at full speed',        starred: true  },
-    { text: 'Ask my dream self: "What do I need to know right now?"',          starred: true  },
-    { text: 'Visit a version of childhood home exactly as I remember it',      starred: true  },
-    { text: 'Breathe underwater in a deep bioluminescent ocean',               starred: false },
-    { text: 'Conjure a door and walk into a completely unknown world',         starred: false },
-    { text: 'Slow down time until everything is frozen still',                 starred: false },
-    { text: 'Speak to a deceased person I miss',                               starred: false },
-    { text: 'Taste the most delicious meal imaginable',                        starred: false },
-    { text: 'Shapeshift into an animal and feel what it perceives',            starred: false },
-    { text: 'Stand at the edge of space and look back at Earth',               starred: false },
-    { text: 'Play an instrument I have never learned in waking life',          starred: false },
-    { text: 'Walk through a mirror to see what is on the other side',         starred: false },
-    { text: 'Summon a spirit guide and ask it three questions',                starred: false },
-    { text: 'Shrink to the size of an ant and explore the grass',             starred: false },
-    { text: 'Watch the Big Bang happen from the outside',                      starred: false },
-    { text: 'Build an entire city from nothing using only thought',            starred: false },
-    { text: 'Ride a giant creature through an ancient landscape',              starred: false },
-    { text: 'Find a library that contains every book ever written',            starred: false },
-    { text: 'Experience a full year inside the dream in one night',            starred: false },
-    { text: 'Dissolve into pure light and feel what nothing feels like',       starred: false },
+    { text: 'Fly above the clouds and dive through them at full speed',      starred: true  },
+    { text: 'Ask my dream self: "What do I need to know right now?"',        starred: true  },
+    { text: 'Visit a version of childhood home exactly as I remember it',    starred: true  },
+    { text: 'Breathe underwater in a deep bioluminescent ocean',             starred: false },
+    { text: 'Conjure a door and walk into a completely unknown world',       starred: false },
+    { text: 'Slow down time until everything is frozen still',               starred: false },
+    { text: 'Speak to a deceased person I miss',                             starred: false },
+    { text: 'Taste the most delicious meal imaginable',                      starred: false },
+    { text: 'Shapeshift into an animal and feel what it perceives',          starred: false },
+    { text: 'Stand at the edge of space and look back at Earth',             starred: false },
+    { text: 'Play an instrument I have never learned in waking life',        starred: false },
+    { text: 'Walk through a mirror to see what is on the other side',       starred: false },
+    { text: 'Summon a spirit guide and ask it three questions',              starred: false },
+    { text: 'Shrink to the size of an ant and explore the grass',           starred: false },
+    { text: 'Watch the Big Bang happen from the outside',                    starred: false },
+    { text: 'Build an entire city from nothing using only thought',          starred: false },
+    { text: 'Ride a giant creature through an ancient landscape',            starred: false },
+    { text: 'Find a library that contains every book ever written',          starred: false },
+    { text: 'Experience a full year inside the dream in one night',          starred: false },
+    { text: 'Dissolve into pure light and feel what nothing feels like',     starred: false },
   ];
 
   /* ══════════════════════════════════════════════════════════
@@ -42,6 +42,58 @@
   const P9_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Caveat+Brush&display=swap');
 
+/* ── File dropdown menu ── */
+#p9-file-menu {
+  position: relative;
+  display: inline-block;
+}
+#p9-file-menu .menu-item {
+  cursor: pointer;
+  user-select: none;
+}
+#p9-file-menu .menu-item.active {
+  background: var(--ink, #d4cfc6);
+  color: var(--paper, #0e0d0b);
+}
+#p9-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 160px;
+  background: var(--paper-dim, #161410);
+  border: 1px solid var(--rule-dark, #3a3630);
+  border-top: none;
+  z-index: 999;
+  box-shadow: 4px 4px 0 rgba(0,0,0,.4);
+}
+#p9-file-menu.open #p9-dropdown { display: block; }
+.p9-dd-item {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .5px;
+  color: var(--ink-soft, #7a7268);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.p9-dd-item:hover {
+  background: var(--ink, #d4cfc6);
+  color: var(--paper, #0e0d0b);
+}
+.p9-dd-sep {
+  height: 1px;
+  background: var(--rule-dark, #3a3630);
+  margin: 2px 0;
+}
+
+/* ── Panel overlay ── */
 #p9-panel {
   position: fixed; inset: 0;
   background: var(--paper, #0e0d0b);
@@ -53,7 +105,6 @@
 }
 #p9-panel.show { display: flex; }
 
-/* ── titlebar — matches sp-titlebar ── */
 .p9-titlebar {
   background: var(--ink, #d4cfc6);
   color: var(--paper, #0e0d0b);
@@ -77,53 +128,48 @@
 }
 .p9-close:hover { background: #c84040; color: #fff; border-color: #c84040; }
 
-/* ── scrollable body ── */
+/* ── Body: centres the notebook ── */
 .p9-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;        /* stretch on desktop */
   justify-content: center;
-  padding: 32px 20px 48px;
+  padding: 24px;
   background: var(--paper, #0e0d0b);
 }
 
-/* ── the paper notebook itself ── */
+/* ── Desktop: full landscape stretch ── */
 .p9-notebook {
-  width: min(640px, 100%);
+  width: 100%;
+  max-width: 1200px;
   background: #f5f0e8;
   border-radius: 2px;
   box-shadow:
     0 0 0 1px #c8bfa8,
     4px 4px 0 0 #b8ad96,
     8px 8px 0 0 #a89e88,
-    0 20px 60px rgba(0,0,0,.55);
+    0 20px 80px rgba(0,0,0,.6);
   position: relative;
   overflow: hidden;
+  display: grid;
+  /* spine | header+list */
+  grid-template-columns: 48px 1fr;
+  grid-template-rows: auto 1fr auto;
 }
 
-/* spine shadow on left */
-.p9-notebook::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; bottom: 0;
-  width: 38px;
-  background: linear-gradient(to right, #c8baa0 0%, #ddd5c0 60%, transparent 100%);
-  border-right: 1px solid #c0b49a;
-  z-index: 2;
-  pointer-events: none;
-}
-
-/* ring holes */
-.p9-rings {
-  position: absolute;
-  top: 0; bottom: 0; left: 18px;
+/* spine column */
+.p9-spine {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  background: linear-gradient(to right, #c0b090 0%, #d8cdb0 65%, #e8e0cc 100%);
+  border-right: 1px solid #b8a888;
   display: flex;
   flex-direction: column;
   justify-content: space-around;
-  padding: 28px 0;
-  z-index: 3;
-  pointer-events: none;
+  align-items: center;
+  padding: 24px 0;
 }
 .p9-ring {
   width: 14px; height: 14px;
@@ -131,47 +177,53 @@
   background: var(--paper, #0e0d0b);
   border: 2px solid #888070;
   box-shadow: inset 0 1px 3px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.1);
+  flex-shrink: 0;
 }
 
-/* ── header area ── */
+/* header */
 .p9-header {
-  margin-left: 38px;
-  padding: 28px 28px 12px 24px;
+  grid-column: 2;
+  grid-row: 1;
+  padding: 28px 36px 14px 28px;
   border-bottom: 2px solid #c0a878;
-  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
 }
-
+.p9-header-left {}
 .p9-cursive-title {
   font-family: 'Caveat Brush', 'Caveat', cursive;
-  font-size: 42px;
+  font-size: 48px;
   color: #2a1f0e;
   line-height: 1;
-  letter-spacing: -0.5px;
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
-
 .p9-cursive-sub {
   font-family: 'Caveat', cursive;
-  font-size: 18px;
+  font-size: 20px;
   color: #7a6848;
   display: block;
   font-weight: 400;
 }
-
-/* decorative ink smudge / underline */
-.p9-header::after {
-  content: '';
-  position: absolute;
-  bottom: -1px; left: 24px; right: 28px;
-  height: 1px;
-  background: linear-gradient(to right, #c0a878, transparent);
+.p9-legend {
+  font-family: 'Caveat', cursive;
+  font-size: 15px;
+  color: #9a8860;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  padding-bottom: 4px;
 }
+.p9-legend-star { color: #c87820; font-size: 17px; }
 
-/* ── ruled lines container ── */
+/* ruled list area */
 .p9-lines {
-  margin-left: 38px;
-  padding: 0 28px 28px 24px;
+  grid-column: 2;
+  grid-row: 2;
+  padding: 4px 36px 20px 28px;
   background-image: repeating-linear-gradient(
     to bottom,
     transparent,
@@ -179,48 +231,42 @@
     #cfc6b0 31px,
     #cfc6b0 32px
   );
-  background-position: 0 43px;
+  background-position: 0 40px;
+
+  /* desktop: two-column grid for landscape use */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 32px;
+  align-content: start;
+}
+
+/* watermark */
+.p9-watermark {
+  grid-column: 2;
+  grid-row: 3;
+  font-family: 'Caveat', cursive;
+  font-size: 11px;
+  color: #c8bc9a;
+  text-align: right;
+  padding: 6px 36px 18px 0;
+  letter-spacing: 1px;
 }
 
 /* ── individual item ── */
 .p9-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   min-height: 32px;
-  padding: 6px 0 6px 0;
-  border-bottom: none;
-  position: relative;
-  animation: p9-fadeIn .35s ease both;
+  padding: 5px 0;
+  animation: p9-fadeIn .3s ease both;
 }
-
-.p9-item:nth-child(1)  { animation-delay: .04s; }
-.p9-item:nth-child(2)  { animation-delay: .08s; }
-.p9-item:nth-child(3)  { animation-delay: .12s; }
-.p9-item:nth-child(4)  { animation-delay: .15s; }
-.p9-item:nth-child(5)  { animation-delay: .18s; }
-.p9-item:nth-child(6)  { animation-delay: .21s; }
-.p9-item:nth-child(7)  { animation-delay: .24s; }
-.p9-item:nth-child(8)  { animation-delay: .27s; }
-.p9-item:nth-child(9)  { animation-delay: .30s; }
-.p9-item:nth-child(10) { animation-delay: .33s; }
-.p9-item:nth-child(11) { animation-delay: .36s; }
-.p9-item:nth-child(12) { animation-delay: .39s; }
-.p9-item:nth-child(13) { animation-delay: .42s; }
-.p9-item:nth-child(14) { animation-delay: .45s; }
-.p9-item:nth-child(15) { animation-delay: .48s; }
-.p9-item:nth-child(16) { animation-delay: .50s; }
-.p9-item:nth-child(17) { animation-delay: .52s; }
-.p9-item:nth-child(18) { animation-delay: .54s; }
-.p9-item:nth-child(19) { animation-delay: .56s; }
-.p9-item:nth-child(20) { animation-delay: .58s; }
+${Array.from({length:20},(_,i)=>`.p9-item:nth-child(${i+1}){animation-delay:${(i*0.04+0.04).toFixed(2)}s}`).join('\n')}
 
 @keyframes p9-fadeIn {
-  from { opacity: 0; transform: translateX(-6px); }
+  from { opacity: 0; transform: translateX(-5px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-
-/* number */
 .p9-num {
   font-family: 'Caveat', cursive;
   font-size: 15px;
@@ -231,66 +277,65 @@
   padding-top: 2px;
   user-select: none;
 }
-
-/* star / priority marker */
 .p9-star {
   flex-shrink: 0;
-  width: 18px;
-  text-align: center;
-  padding-top: 1px;
+  width: 16px;
   font-size: 14px;
   user-select: none;
-  line-height: 1.5;
+  line-height: 1.6;
 }
-.p9-star.starred  { color: #c87820; filter: drop-shadow(0 0 3px #c8782055); }
-.p9-star.unstarred { color: transparent; }
-
-/* text */
+.p9-star.starred   { color: #c87820; filter: drop-shadow(0 0 3px #c8782066); }
+.p9-star.unstarred { color: #d8d0bc; }
 .p9-text {
   font-family: 'Caveat', cursive;
-  font-size: 19px;
+  font-size: 18px;
   color: #1a1208;
   line-height: 1.65;
   flex: 1;
-  letter-spacing: 0.2px;
-}
-
-/* starred items get an ink-highlight behind them */
-.p9-item.is-starred .p9-text {
-  color: #0e0a04;
-  font-weight: 600;
 }
 .p9-item.is-starred {
-  background: linear-gradient(to right, #f5e8c855, transparent 90%);
+  background: linear-gradient(to right, #f5e8c870, transparent 95%);
   border-radius: 2px;
 }
-
-/* faint watermark in bottom right */
-.p9-watermark {
-  font-family: 'Caveat', cursive;
-  font-size: 11px;
-  color: #c8bc9a;
-  text-align: right;
-  padding: 0 28px 16px;
-  margin-left: 38px;
-  letter-spacing: 1px;
+.p9-item.is-starred .p9-text {
+  font-weight: 600;
+  color: #0e0a04;
 }
 
-/* legend */
-.p9-legend {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 38px;
-  padding: 10px 24px 0;
-  font-family: 'Caveat', cursive;
-  font-size: 14px;
-  color: #9a8860;
-  border-top: 1px dashed #cfc6b0;
+/* ══ MOBILE — portrait, single column ══ */
+@media (max-width: 700px) {
+  .p9-body {
+    padding: 0;
+    align-items: flex-start;
+  }
+  .p9-notebook {
+    max-width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+    grid-template-columns: 32px 1fr;
+    min-height: 100%;
+  }
+  .p9-ring { width: 11px; height: 11px; }
+  .p9-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 20px 18px 12px 18px;
+  }
+  .p9-cursive-title { font-size: 36px; }
+  .p9-cursive-sub   { font-size: 17px; }
+  .p9-lines {
+    grid-template-columns: 1fr;   /* single column on mobile */
+    padding: 4px 18px 20px 16px;
+    gap: 0;
+  }
+  .p9-watermark { padding: 6px 18px 16px 0; }
+  .p9-text { font-size: 17px; }
 }
 `;
 
   (function injectStyles() {
+    if (document.getElementById('p9-styles')) return;
     const s = document.createElement('style');
     s.id = 'p9-styles';
     s.textContent = P9_CSS;
@@ -306,7 +351,17 @@
     const panel = document.createElement('div');
     panel.id = 'p9-panel';
 
-    /* titlebar */
+    // 9 rings
+    const rings = Array(9).fill('<div class="p9-ring"></div>').join('');
+
+    // list rows
+    const rows = LUCID_LIST.map((item, i) => `
+      <div class="p9-item${item.starred ? ' is-starred' : ''}">
+        <span class="p9-num">${i + 1}.</span>
+        <span class="p9-star ${item.starred ? 'starred' : 'unstarred'}">${item.starred ? '★' : '☆'}</span>
+        <span class="p9-text">${item.text}</span>
+      </div>`).join('');
+
     panel.innerHTML = `
       <div class="p9-titlebar">
         <span>DREAM_JOURNAL.EXE — Lucid Bucket List</span>
@@ -314,52 +369,25 @@
       </div>
       <div class="p9-body">
         <div class="p9-notebook">
-
-          <!-- binding rings -->
-          <div class="p9-rings">
-            ${Array(9).fill('<div class="p9-ring"></div>').join('')}
-          </div>
-
-          <!-- header -->
+          <div class="p9-spine">${rings}</div>
           <div class="p9-header">
-            <span class="p9-cursive-title">things to do lucid</span>
-            <span class="p9-cursive-sub">if I ever get the chance ✦</span>
+            <div class="p9-header-left">
+              <span class="p9-cursive-title">things to do lucid</span>
+              <span class="p9-cursive-sub">if I ever get the chance ✦</span>
+            </div>
+            <div class="p9-legend">
+              <span class="p9-legend-star">★</span>
+              <span>= most important</span>
+            </div>
           </div>
-
-          <!-- legend -->
-          <div class="p9-legend">
-            <span style="color:#c87820;font-size:16px">★</span>
-            <span>= most important</span>
-          </div>
-
-          <!-- ruled list -->
-          <div class="p9-lines" id="p9-lines"></div>
-
-          <!-- watermark -->
+          <div class="p9-lines" id="p9-lines">${rows}</div>
           <div class="p9-watermark">consciousness archive · lucid log</div>
         </div>
       </div>`;
 
     document.body.appendChild(panel);
 
-    /* populate list */
-    const linesEl = document.getElementById('p9-lines');
-    LUCID_LIST.forEach((item, i) => {
-      const row = document.createElement('div');
-      row.className = 'p9-item' + (item.starred ? ' is-starred' : '');
-
-      row.innerHTML = `
-        <span class="p9-num">${i + 1}.</span>
-        <span class="p9-star ${item.starred ? 'starred' : 'unstarred'}">${item.starred ? '★' : '☆'}</span>
-        <span class="p9-text">${item.text}</span>`;
-
-      linesEl.appendChild(row);
-    });
-
-    /* close button */
     document.getElementById('p9-close').addEventListener('click', closePanel);
-
-    /* ESC closes */
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && panel.classList.contains('show')) closePanel();
     });
@@ -375,49 +403,105 @@
   }
 
   /* ══════════════════════════════════════════════════════════
-     INJECT MENU ITEM — "Lucid List" after Stats
+     FILE DROPDOWN — wraps existing "File" menu item
+     Structure added:
+       <span id="p9-file-menu" class="menu-item-wrapper">
+         <span class="menu-item" id="menu-file-trigger">File</span>
+         <div id="p9-dropdown">
+           <button>Export</button>
+           <div class="p9-dd-sep"></div>
+           <button>Lucid List</button>
+         </div>
+       </span>
   ══════════════════════════════════════════════════════════ */
-  function injectMenuButton() {
-    if (document.getElementById('menu-lucid')) return;
+  function buildFileDropdown() {
+    if (document.getElementById('p9-file-menu')) return;
 
-    /* Try to insert after #menu-stats, otherwise after #menu-export */
-    const anchor =
-      document.getElementById('menu-stats') ||
-      document.getElementById('menu-export');
-    if (!anchor) return;
+    // Find the File menu item — it's the first .menu-item in #menubar
+    const menubar = document.getElementById('menubar');
+    if (!menubar) return;
 
-    const btn = document.createElement('span');
-    btn.className = 'menu-item';
-    btn.id = 'menu-lucid';
-    btn.innerHTML = '<span class="ul">L</span>ucid List';
-    btn.addEventListener('click', openPanel);
+    const fileItem = Array.from(menubar.querySelectorAll('.menu-item'))
+      .find(el => el.textContent.trim().replace(/\s+/g,'').toLowerCase().startsWith('file'));
+    if (!fileItem) return;
 
-    anchor.parentNode.insertBefore(btn, anchor.nextSibling);
+    const exportItem = document.getElementById('menu-export');
+
+    // Wrap the File label in a dropdown container
+    const wrapper = document.createElement('span');
+    wrapper.id = 'p9-file-menu';
+    wrapper.style.cssText = 'position:relative;display:inline-block;';
+
+    fileItem.parentNode.insertBefore(wrapper, fileItem);
+    wrapper.appendChild(fileItem);
+
+    // Make it show active when open
+    const trigger = fileItem;
+
+    // Build dropdown
+    const dropdown = document.createElement('div');
+    dropdown.id = 'p9-dropdown';
+
+    // Export button — calls the original export handler
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'p9-dd-item';
+    exportBtn.textContent = 'Export';
+    exportBtn.addEventListener('click', () => {
+      closeDropdown();
+      // Delegate to the real export: try clicking hidden #menu-export,
+      // or call window.exportEntries if it exists
+      if (exportItem) {
+        exportItem.click();
+      } else if (typeof window.exportEntries === 'function') {
+        window.exportEntries();
+      }
+    });
+
+    const sep = document.createElement('div');
+    sep.className = 'p9-dd-sep';
+
+    const lucidBtn = document.createElement('button');
+    lucidBtn.className = 'p9-dd-item';
+    lucidBtn.id = 'p9-lucid-btn';
+    lucidBtn.textContent = 'Lucid List';
+    lucidBtn.addEventListener('click', () => {
+      closeDropdown();
+      openPanel();
+    });
+
+    dropdown.appendChild(exportBtn);
+    dropdown.appendChild(sep);
+    dropdown.appendChild(lucidBtn);
+    wrapper.appendChild(dropdown);
+
+    // Toggle on File click
+    trigger.addEventListener('click', e => {
+      e.stopPropagation();
+      wrapper.classList.toggle('open');
+      trigger.classList.toggle('active', wrapper.classList.contains('open'));
+    });
+
+    // Close on outside click
+    document.addEventListener('click', () => closeDropdown());
+
+    // Hide the standalone export item (it lives in the dropdown now)
+    if (exportItem) {
+      exportItem.style.display = 'none';
+      exportItem.dataset.p9hidden = '1';
+    }
+  }
+
+  function closeDropdown() {
+    const w = document.getElementById('p9-file-menu');
+    if (!w) return;
+    w.classList.remove('open');
+    const trigger = w.querySelector('.menu-item');
+    if (trigger) trigger.classList.remove('active');
   }
 
   /* ══════════════════════════════════════════════════════════
-     PATCH4 INTEGRATION — encrypt "Lucid List" text when locked
+     PATCH4 INTEGRATION — encrypt dropdown labels when locked
   ══════════════════════════════════════════════════════════ */
-  function hookPatch4() {
-    const dot = document.getElementById('lock-dot');
-    if (!dot || dot.__p9hooked) return;
-    dot.__p9hooked = true;
-
-    const btn = () => document.getElementById('menu-lucid');
-
-    new MutationObserver(() => {
-      const isOn = dot.classList.contains('on');
-      const el = btn();
-      if (!el) return;
-      if (!isOn) {
-        // locked — scramble the label the same simple way patch4 does
-        el.textContent = p9Scramble('Lucid List');
-      } else {
-        el.innerHTML = '<span class="ul">L</span>ucid List';
-      }
-    }).observe(dot, { attributes: true, attributeFilter: ['class'] });
-  }
-
   const P9_GL = '░▒▓▄▀■□~*+=#@&?!./|:ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz0123456789';
   function p9Scramble(text) {
     let h = 2166136261 >>> 0;
@@ -427,15 +511,28 @@
     return [...text].map(ch => ch === ' ' ? ch : P9_GL[Math.floor(r() * P9_GL.length)]).join('');
   }
 
+  function hookPatch4() {
+    const dot = document.getElementById('lock-dot');
+    if (!dot || dot.__p9hooked) return;
+    dot.__p9hooked = true;
+
+    new MutationObserver(() => {
+      const isOn = dot.classList.contains('on');
+      const lucidBtn = document.getElementById('p9-lucid-btn');
+      if (!lucidBtn) return;
+      lucidBtn.textContent = isOn ? 'Lucid List' : p9Scramble('Lucid List');
+    }).observe(dot, { attributes: true, attributeFilter: ['class'] });
+  }
+
   /* ══════════════════════════════════════════════════════════
      INIT
   ══════════════════════════════════════════════════════════ */
   document.addEventListener('DOMContentLoaded', () => {
     [0, 300, 700, 1400].forEach(ms => setTimeout(() => {
-      injectMenuButton();
+      buildFileDropdown();
       hookPatch4();
     }, ms));
   });
 
-  console.log('[patch9] v9 ✓  — lucid bucket list panel active');
+  console.log('[patch9] v9 ✓  — lucid list + file dropdown active');
 })();
