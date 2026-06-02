@@ -1,9 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════
    patch9.js  —  Dream Journal extension (v9)
    • Adds "Lucid List" menu item
-   • Opens a notebook-style panel with 20 lucid dream goals
-   • Top 3 are starred / marked as priority
-   • Handwritten cursive heading, ruled notebook paper aesthetic
+   • Opens ONLY when journal is unlocked (lock-gated)
+   • Desktop: full-screen landscape notebook (two-column)
+   • Mobile:  portrait card, centered
+   • Top 3 goals starred / marked as priority
+   • Handwritten cursive heading, ruled notebook aesthetic
    • Integrates with existing patch4 lock/unlock encryption
 ═══════════════════════════════════════════════════════════════ */
 
@@ -77,119 +79,162 @@
 }
 .p9-close:hover { background: #c84040; color: #fff; border-color: #c84040; }
 
-/* ── scrollable body ── */
+/* ── scrollable body — fills remaining height ── */
 .p9-body {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 32px 20px 48px;
   background: var(--paper, #0e0d0b);
+  /* On desktop the notebook IS the body — no padding, fills all space */
+  padding: 0;
 }
 
-/* ── the paper notebook itself ── */
+/* ══════════════════════════════════════════════════════════
+   DESKTOP LAYOUT — full landscape spread
+   Left column: spine + header info
+   Right column: scrollable ruled list
+══════════════════════════════════════════════════════════ */
 .p9-notebook {
-  width: min(640px, 100%);
+  flex: 1;
+  display: flex;
+  flex-direction: row;
   background: #f5f0e8;
-  border-radius: 2px;
-  box-shadow:
-    0 0 0 1px #c8bfa8,
-    4px 4px 0 0 #b8ad96,
-    8px 8px 0 0 #a89e88,
-    0 20px 60px rgba(0,0,0,.55);
+  overflow: hidden;
+  /* fill entire body */
+  min-height: 0;
+  box-shadow: none;
+  border-radius: 0;
+  position: relative;
+}
+
+/* left column — spine + cover info */
+.p9-cover-col {
+  width: 260px;
+  min-width: 220px;
+  max-width: 300px;
+  flex-shrink: 0;
+  background: linear-gradient(to right, #c8baa0 0%, #ddd5c0 60%, #f0eadc 100%);
+  border-right: 2px solid #c0b49a;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
   position: relative;
   overflow: hidden;
 }
 
-/* spine shadow on left */
-.p9-notebook::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; bottom: 0;
-  width: 38px;
-  background: linear-gradient(to right, #c8baa0 0%, #ddd5c0 60%, transparent 100%);
-  border-right: 1px solid #c0b49a;
-  z-index: 2;
-  pointer-events: none;
-}
-
-/* ring holes */
+/* ring holes column within the cover */
 .p9-rings {
   position: absolute;
-  top: 0; bottom: 0; left: 18px;
+  top: 0; bottom: 0; right: -1px;
   display: flex;
   flex-direction: column;
   justify-content: space-around;
-  padding: 28px 0;
+  padding: 32px 0;
   z-index: 3;
   pointer-events: none;
 }
 .p9-ring {
-  width: 14px; height: 14px;
+  width: 16px; height: 16px;
   border-radius: 50%;
   background: var(--paper, #0e0d0b);
   border: 2px solid #888070;
   box-shadow: inset 0 1px 3px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.1);
+  transform: translateX(50%);
 }
 
-/* ── header area ── */
-.p9-header {
-  margin-left: 38px;
-  padding: 28px 28px 12px 24px;
-  border-bottom: 2px solid #c0a878;
-  position: relative;
+/* cover inner content */
+.p9-cover-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px 32px 40px 28px;
+  gap: 24px;
 }
 
 .p9-cursive-title {
   font-family: 'Caveat Brush', 'Caveat', cursive;
-  font-size: 42px;
+  font-size: 52px;
   color: #2a1f0e;
   line-height: 1;
   letter-spacing: -0.5px;
   display: block;
-  margin-bottom: 6px;
 }
 
 .p9-cursive-sub {
   font-family: 'Caveat', cursive;
-  font-size: 18px;
+  font-size: 20px;
   color: #7a6848;
   display: block;
   font-weight: 400;
 }
 
-/* decorative ink smudge / underline */
-.p9-header::after {
-  content: '';
-  position: absolute;
-  bottom: -1px; left: 24px; right: 28px;
-  height: 1px;
-  background: linear-gradient(to right, #c0a878, transparent);
+.p9-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Caveat', cursive;
+  font-size: 16px;
+  color: #9a8860;
+  margin-top: 8px;
 }
 
-/* ── ruled lines container ── */
-.p9-lines {
-  margin-left: 38px;
-  padding: 0 28px 28px 24px;
+.p9-cover-footer {
+  padding: 20px 28px;
+  font-family: 'Caveat', cursive;
+  font-size: 13px;
+  color: #c8bc9a;
+  letter-spacing: 1px;
+  border-top: 1px dashed #c0b090;
+  margin: 0 16px;
+}
+
+/* right column — ruled list */
+.p9-list-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  background: #f5f0e8;
+  /* ruled paper lines */
   background-image: repeating-linear-gradient(
     to bottom,
     transparent,
-    transparent 31px,
-    #cfc6b0 31px,
-    #cfc6b0 32px
+    transparent 39px,
+    #cfc6b0 39px,
+    #cfc6b0 40px
   );
-  background-position: 0 43px;
+  background-position: 0 52px;
 }
+
+.p9-list-header {
+  padding: 14px 32px 10px;
+  font-family: 'Caveat', cursive;
+  font-size: 14px;
+  color: #a89060;
+  letter-spacing: 2px;
+  border-bottom: 2px solid #c0a878;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.p9-lines {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 32px 32px 24px;
+}
+.p9-lines::-webkit-scrollbar { width: 4px; }
+.p9-lines::-webkit-scrollbar-thumb { background: #c0b49a; }
+.p9-lines::-webkit-scrollbar-track { background: transparent; }
 
 /* ── individual item ── */
 .p9-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  min-height: 32px;
-  padding: 6px 0 6px 0;
-  border-bottom: none;
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 0 4px;
   position: relative;
   animation: p9-fadeIn .35s ease both;
 }
@@ -220,42 +265,38 @@
   to   { opacity: 1; transform: translateX(0); }
 }
 
-/* number */
 .p9-num {
   font-family: 'Caveat', cursive;
-  font-size: 15px;
+  font-size: 16px;
   color: #a89060;
   flex-shrink: 0;
-  width: 22px;
+  width: 26px;
   text-align: right;
   padding-top: 2px;
   user-select: none;
 }
 
-/* star / priority marker */
 .p9-star {
   flex-shrink: 0;
-  width: 18px;
+  width: 20px;
   text-align: center;
   padding-top: 1px;
-  font-size: 14px;
+  font-size: 16px;
   user-select: none;
   line-height: 1.5;
 }
-.p9-star.starred  { color: #c87820; filter: drop-shadow(0 0 3px #c8782055); }
+.p9-star.starred   { color: #c87820; filter: drop-shadow(0 0 3px #c8782055); }
 .p9-star.unstarred { color: transparent; }
 
-/* text */
 .p9-text {
   font-family: 'Caveat', cursive;
-  font-size: 19px;
+  font-size: 21px;
   color: #1a1208;
-  line-height: 1.65;
+  line-height: 1.85;
   flex: 1;
   letter-spacing: 0.2px;
 }
 
-/* starred items get an ink-highlight behind them */
 .p9-item.is-starred .p9-text {
   color: #0e0a04;
   font-weight: 600;
@@ -265,28 +306,99 @@
   border-radius: 2px;
 }
 
-/* faint watermark in bottom right */
-.p9-watermark {
-  font-family: 'Caveat', cursive;
-  font-size: 11px;
-  color: #c8bc9a;
-  text-align: right;
-  padding: 0 28px 16px;
-  margin-left: 38px;
-  letter-spacing: 1px;
-}
+/* ══════════════════════════════════════════════════════════
+   MOBILE LAYOUT  ≤ 640px — portrait card
+══════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .p9-body {
+    overflow-y: auto;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 20px 12px 48px;
+  }
 
-/* legend */
-.p9-legend {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 38px;
-  padding: 10px 24px 0;
-  font-family: 'Caveat', cursive;
-  font-size: 14px;
-  color: #9a8860;
-  border-top: 1px dashed #cfc6b0;
+  /* Switch back to single-column card */
+  .p9-notebook {
+    flex-direction: column;
+    width: 100%;
+    max-width: 480px;
+    min-height: unset;
+    border-radius: 2px;
+    box-shadow:
+      0 0 0 1px #c8bfa8,
+      3px 3px 0 0 #b8ad96,
+      0 16px 40px rgba(0,0,0,.55);
+    overflow: visible;
+    background: #f5f0e8;
+    background-image: none;
+  }
+
+  .p9-cover-col {
+    width: 100%;
+    max-width: 100%;
+    min-width: unset;
+    background: linear-gradient(to bottom, #c8baa0 0%, #ddd5c0 50%, #f0eadc 100%);
+    border-right: none;
+    border-bottom: 2px solid #c0b49a;
+    /* rings on left edge for portrait */
+    padding-left: 36px;
+    position: relative;
+  }
+
+  /* Reposition rings to the left for portrait */
+  .p9-rings {
+    right: auto;
+    left: 10px;
+    top: 0; bottom: 0;
+    flex-direction: column;
+    justify-content: space-around;
+    padding: 20px 0;
+    transform: none;
+  }
+  .p9-ring {
+    transform: none;
+    width: 14px; height: 14px;
+  }
+
+  .p9-cover-inner {
+    padding: 24px 20px 20px 20px;
+    gap: 12px;
+  }
+
+  .p9-cursive-title { font-size: 38px; }
+  .p9-cursive-sub   { font-size: 17px; }
+
+  .p9-cover-footer {
+    margin: 0 8px;
+    padding: 12px 16px;
+  }
+
+  .p9-list-col {
+    background: #f5f0e8;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 31px,
+      #cfc6b0 31px,
+      #cfc6b0 32px
+    );
+    background-position: 0 44px;
+  }
+
+  .p9-list-header {
+    padding: 10px 20px 8px;
+    font-size: 12px;
+  }
+
+  .p9-lines {
+    padding: 0 16px 24px 12px;
+    overflow-y: visible; /* let the outer .p9-body scroll */
+  }
+
+  .p9-item { min-height: 32px; padding: 5px 0 3px; gap: 8px; }
+  .p9-num  { font-size: 14px; width: 22px; }
+  .p9-star { font-size: 14px; width: 16px; }
+  .p9-text { font-size: 18px; line-height: 1.65; }
 }
 `;
 
@@ -306,7 +418,6 @@
     const panel = document.createElement('div');
     panel.id = 'p9-panel';
 
-    /* titlebar */
     panel.innerHTML = `
       <div class="p9-titlebar">
         <span>DREAM_JOURNAL.EXE — Lucid Bucket List</span>
@@ -315,28 +426,31 @@
       <div class="p9-body">
         <div class="p9-notebook">
 
-          <!-- binding rings -->
-          <div class="p9-rings">
-            ${Array(9).fill('<div class="p9-ring"></div>').join('')}
+          <!-- LEFT COLUMN: cover / spine -->
+          <div class="p9-cover-col">
+            <!-- binding rings -->
+            <div class="p9-rings">
+              ${Array(11).fill('<div class="p9-ring"></div>').join('')}
+            </div>
+
+            <div class="p9-cover-inner">
+              <span class="p9-cursive-title">things to do<br>lucid</span>
+              <span class="p9-cursive-sub">if I ever get the chance ✦</span>
+              <div class="p9-legend">
+                <span style="color:#c87820;font-size:18px">★</span>
+                <span>= most important</span>
+              </div>
+            </div>
+
+            <div class="p9-cover-footer">consciousness archive · lucid log</div>
           </div>
 
-          <!-- header -->
-          <div class="p9-header">
-            <span class="p9-cursive-title">things to do lucid</span>
-            <span class="p9-cursive-sub">if I ever get the chance ✦</span>
+          <!-- RIGHT COLUMN: ruled list -->
+          <div class="p9-list-col">
+            <div class="p9-list-header">20 goals &nbsp;·&nbsp; ★ top 3 priority</div>
+            <div class="p9-lines" id="p9-lines"></div>
           </div>
 
-          <!-- legend -->
-          <div class="p9-legend">
-            <span style="color:#c87820;font-size:16px">★</span>
-            <span>= most important</span>
-          </div>
-
-          <!-- ruled list -->
-          <div class="p9-lines" id="p9-lines"></div>
-
-          <!-- watermark -->
-          <div class="p9-watermark">consciousness archive · lucid log</div>
         </div>
       </div>`;
 
@@ -347,25 +461,35 @@
     LUCID_LIST.forEach((item, i) => {
       const row = document.createElement('div');
       row.className = 'p9-item' + (item.starred ? ' is-starred' : '');
-
       row.innerHTML = `
         <span class="p9-num">${i + 1}.</span>
         <span class="p9-star ${item.starred ? 'starred' : 'unstarred'}">${item.starred ? '★' : '☆'}</span>
         <span class="p9-text">${item.text}</span>`;
-
       linesEl.appendChild(row);
     });
 
-    /* close button */
     document.getElementById('p9-close').addEventListener('click', closePanel);
 
-    /* ESC closes */
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && panel.classList.contains('show')) closePanel();
     });
   }
 
+  /* ══════════════════════════════════════════════════════════
+     OPEN / CLOSE  — lock-gated
+  ══════════════════════════════════════════════════════════ */
   function openPanel() {
+    /* Gate: only open when the journal is unlocked */
+    if (!window.S?.unlocked) {
+      if (typeof window.notify === 'function') {
+        window.notify('Unlock the journal first.', 'err', 2200);
+      }
+      /* Focus the passphrase input */
+      const pwInput = document.getElementById('pw-input');
+      if (pwInput) { pwInput.focus(); }
+      return;
+    }
+
     if (!document.getElementById('p9-panel')) buildPanel();
     document.getElementById('p9-panel').classList.add('show');
   }
@@ -375,12 +499,27 @@
   }
 
   /* ══════════════════════════════════════════════════════════
+     AUTO-LOCK: close Lucid List when journal locks
+  ══════════════════════════════════════════════════════════ */
+  function hookLockForAutoClose() {
+    const dot = document.getElementById('lock-dot');
+    if (!dot || dot.__p9closeHooked) return;
+    dot.__p9closeHooked = true;
+
+    new MutationObserver(() => {
+      /* If the dot loses "on" (journal locked) — close the panel */
+      if (!dot.classList.contains('on')) {
+        closePanel();
+      }
+    }).observe(dot, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  /* ══════════════════════════════════════════════════════════
      INJECT MENU ITEM — "Lucid List" after Stats
   ══════════════════════════════════════════════════════════ */
   function injectMenuButton() {
     if (document.getElementById('menu-lucid')) return;
 
-    /* Try to insert after #menu-stats, otherwise after #menu-export */
     const anchor =
       document.getElementById('menu-stats') ||
       document.getElementById('menu-export');
@@ -396,7 +535,7 @@
   }
 
   /* ══════════════════════════════════════════════════════════
-     PATCH4 INTEGRATION — encrypt "Lucid List" text when locked
+     PATCH4 INTEGRATION — encrypt label when locked
   ══════════════════════════════════════════════════════════ */
   function hookPatch4() {
     const dot = document.getElementById('lock-dot');
@@ -410,7 +549,6 @@
       const el = btn();
       if (!el) return;
       if (!isOn) {
-        // locked — scramble the label the same simple way patch4 does
         el.textContent = p9Scramble('Lucid List');
       } else {
         el.innerHTML = '<span class="ul">L</span>ucid List';
@@ -434,8 +572,9 @@
     [0, 300, 700, 1400].forEach(ms => setTimeout(() => {
       injectMenuButton();
       hookPatch4();
+      hookLockForAutoClose();
     }, ms));
   });
 
-  console.log('[patch9] v9 ✓  — lucid bucket list panel active');
+  console.log('[patch9] v9 ✓  — lucid bucket list panel active (lock-gated, landscape/portrait responsive)');
 })();
